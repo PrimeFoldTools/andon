@@ -1,0 +1,17 @@
+# CONTEXT — <project name>
+
+> Per-project working state. One per project, at its root. Updated at the END of every
+> session (see `wrap_protocol.md`). Keep it short — this is "where things stand right now,"
+> not a log. History lives in your memory files + git.
+
+## Running
+- <process / job / watcher> — <what it's doing>   (or: nothing running)
+
+## Done (recent)
+- <commit / artifact / decision from this session>
+
+## Next
+- <top of the queue for the next session>
+
+## Blockers / open questions
+- <thing a human needs to decide before this can move>

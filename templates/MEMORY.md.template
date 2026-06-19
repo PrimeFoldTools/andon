@@ -1,0 +1,56 @@
+# Memory Index
+
+> This file is the auto-loaded index. Keep it under 200 lines (most agent harnesses truncate after that). Move detail into the linked topic files.
+
+## File conventions
+
+All memory files live in this directory and use prefix-typed filenames:
+
+| Prefix | Contents | Lifetime |
+|---|---|---|
+| `project_*` | Active work, ongoing initiatives, session logs | Days to months |
+| `feedback_*` | Operator decisions, locked doctrines, lessons learned | Long-lived |
+| `reference_*` | Canonical patterns, playbooks, how-to docs | Long-lived |
+| `user_*` | Operator identity, preferences, focus areas | Long-lived |
+
+Each file has frontmatter:
+
+```markdown
+---
+name: <short title>
+description: <one-line, used to decide relevance in future sessions>
+type: <project | feedback | reference | user>
+---
+```
+
+## RECENT SESSIONS
+
+<append one line per session wrap, most recent first>
+
+- **YYYY-MM-DD — Title** one-line hook. [→](project_session_YYYYMMDD.md)
+
+## DOCTRINE (operator-locked decisions)
+
+<one line per feedback file, by topic>
+
+- [Title](feedback_<topic>.md) — one-line description
+
+## REFERENCE PATTERNS
+
+<one line per reference file, by topic>
+
+- [Title](reference_<topic>.md) — one-line description
+
+## USER PROFILE
+
+- [Title](user_profile.md) — one-line description
+
+## ACTIVE PROJECT STATE
+
+<one line per active project file>
+
+- [Title](project_<project>.md) — one-line description
+
+## Archive
+
+When this index passes ~150 lines, archive older entries. Move pre-consolidation versions to `archive/MEMORY_pre_consolidation_YYYYMMDD.md` and leave a pointer here.

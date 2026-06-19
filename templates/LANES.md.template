@@ -1,0 +1,29 @@
+# LANES.md — work-lane registry
+
+> The registry of your work-lanes and who's in them right now. This is the file every
+> session reads FIRST and claims a lane in, before doing anything. (The per-lane spawn
+> brief is `lane_template.md`; this is the live registry.)
+>
+> You only need lanes once you run ≥2 agent sessions at the same time, or when one lane
+> touches something irreversible (capital, production data, a public publish surface).
+
+## How to use
+1. Read this file. Pick a lane that's `_empty_` (or wait, if the lane you need is claimed).
+2. Write your claim line under that lane.
+3. Work. Commit while still claimed.
+4. Release: set the lane back to `_empty_` and commit that release immediately.
+
+**Claim line format:** `session-<id> at <ISO-8601 UTC>, working on: <one-line task>`
+
+## Lanes
+
+### research        — read/explore/analyze; low blast radius
+**Currently claimed:** _empty_
+
+### build           — write code/content; medium blast radius
+**Currently claimed:** _empty_
+
+### deploy  ⛔ SINGLE-SESSION-MAX — anything irreversible (capital, prod data, public publish)
+**Currently claimed:** _empty_
+
+<!-- Add/rename lanes to fit your work. Keep the irreversible one single-session-max. -->

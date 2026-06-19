@@ -1,0 +1,83 @@
+# CLAUDE.md — <project or operator name>
+
+> Global instructions for Claude Code (or any compatible agent harness) for this operator / project.
+
+## Operator profile
+
+<one paragraph: who you are, what you're building, what the agent should optimize for>
+
+## Search Before Building (MANDATORY)
+
+Before writing any new artifact (script, parser, doc, recommendation), run these searches. If something exists, use it.
+
+1. **Grep the code:** `grep -rn "<keyword>" --include="*.<ext>"`
+2. **Semantic search** the indexed corpus (Chroma / Pinecone / etc).
+3. **Memory check** — read the relevant doctrine/reference file *before* recommending.
+4. **Tool library** — does an existing tool already do this? Don't recommend a paid service before checking free alternatives.
+
+Build from scratch only when all four come empty.
+
+## Operating Rules
+
+<edit this list — these are the laws this operator decided on>
+
+- The operator is CEO. Gates advise, don't block.
+- Be concise. No fluff. No trailing summaries.
+- No external publish/push without explicit operator approval.
+- Freezes apply to *specific named items*, never as default posture. Operator's "do this" overrides.
+- <add your domain-specific rules>
+
+## Architecture
+
+<link to your architecture-of-record file>
+
+## Session Protocol
+
+**Start:**
+
+1. Read project CONTEXT.md (if it exists).
+2. Claim a lane (see `lane_template.md`).
+3. Auto-loaded: MEMORY.md index.
+
+**End (MANDATORY):** See `wrap_protocol.md`.
+
+## Mistakes Log (Boris-pattern)
+
+**Convention:** When the agent does something wrong, add a one-line entry here. Future sessions read this and avoid repeating.
+
+**Format:** `- YYYY-MM-DD — <symptom>. **Correction:** <correction>. **Codified:** <test path / hook / memory file / "not yet">`
+
+The **Codified** field is the prune signal — entries with concrete codification can be pruned once the codification has held for ≥30 days. Entries marked `not yet` stay until codified or stop being relevant.
+
+**Cap:** ~30 active entries. When exceeded, run a consolidation pass — ≥3 entries sharing a root cause collapse into one meta-entry.
+
+### When to add an entry
+
+- Operator corrects the agent
+- A test fails on first run because of a wrong assumption
+- A "complete" claim turns out to have gaps
+- A claim gets contradicted by data on closer inspection
+
+### Don't add for
+
+- Transient errors (network, API timeouts)
+- Operator preference shifts (those go in feedback memory)
+- Trivial typos
+
+### Entries
+
+<append one-line entries here as the agent makes mistakes>
+
+- YYYY-MM-DD — <symptom>. **Correction:** <correction>. **Codified:** <path or "not yet">
+
+## Token Budget
+
+| File | Tokens | Loaded |
+|---|---|---|
+| This file | ~500 | Always |
+| Project CLAUDE.md | ~300 | In project |
+| Project CONTEXT.md | ~250 | In project |
+| Memory file (each) | ~200-500 | On demand only |
+| Skills (each) | ~1,000-2,000 | On demand only |
+
+Keep this file under ~500 tokens. Move detail into linked files.
