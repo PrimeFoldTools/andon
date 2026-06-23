@@ -1,6 +1,6 @@
 # Quickstart
 
-Three layers. Each one stands on its own — stop whenever it's enough. The whole thing is plain Markdown + one stdlib-only Python hook.
+Four layers. Each one stands on its own — stop whenever it's enough. The whole thing is plain Markdown + a couple of stdlib-only Python hooks.
 
 **Prerequisite:** an agent harness that reads a project instructions file and can run hooks. Written for **Claude Code** (which creates `~/.claude/` when you install it). If you use Cursor / Cline / Windsurf, the templates still apply — your instructions file and hook mechanism just have different names (see [TROUBLESHOOTING.md](TROUBLESHOOTING.md)).
 
@@ -21,7 +21,7 @@ cp /path/to/andon/templates/MEMORY.md.template memory/MEMORY.md
 1. Open `memory/MEMORY.md`. Add 2–3 lines under the index — the durable facts your agent keeps forgetting (your stack, a hard rule, a decision you made and why).
 2. Tell your agent to read it. In your project instructions file (Layer 2, or just a one-liner for now): *"Read `memory/MEMORY.md` at the start of every session."*
 
-Done. Your agent now starts every session with the context already loaded.
+Done. From the *next* session on, your agent starts with this context already loaded — the change shows up when it next reads the file, not the instant you save it.
 
 **Filing convention** (so a folder of notes stays searchable instead of becoming a graveyard): name files by prefix —
 `project_*` (active work) · `feedback_*` (decisions/lessons) · `reference_*` (how-tos) · `user_*` (who you are).

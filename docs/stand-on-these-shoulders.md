@@ -2,6 +2,8 @@
 
 Andon is an operating *discipline*, not a platform. It sits on top of other people's tools and ideas — most of what makes a real AI OS work is theirs, not mine. Credit where it's due, and a starting reading list if you want to go deeper.
 
+> See also the README's [“Why this, and not the 20 other memory repos”](../README.md#why-this-and-not-the-20-other-memory-repos) — the honest, named comparison to the lighter memory tools.
+
 ## The ideas
 
 - **Toyota Production System / Lean** (Taiichi Ohno and the people who built it) — the whole spine: *andon*, *poka-yoke*, *jidoka*, *kaizen*, standard work. This project is mostly TPS pointed at agents.
@@ -13,6 +15,7 @@ Andon is an operating *discipline*, not a platform. It sits on top of other peop
 - **[rtk](https://github.com/rtk-ai/rtk)** — compresses/filters shell output before it hits your context. The fastest token win for a heavy agent setup.
 - **[graphify](https://github.com/safishamsi/graphify)** — turns a repo into a queryable knowledge graph; far fewer tokens per question than reading raw files.
 - **[claude-mem](https://github.com/thedotmack/claude-mem)** — auto-captures session activity and re-injects relevant context. A heavier, automated cousin of the memory layer here.
+- **[claude-reflect](https://github.com/BayramAnnakov/claude-reflect)** — auto-captures your corrections into a rule file. If memory + a mistakes log is all you want, start here (it's the honest alternative named in the README).
 - **[halo](https://github.com/context-labs/halo)** — a self-improving agent harness (trace → find failure modes → patch the harness → repeat). The pattern behind a real learning loop.
 - **[Agent Skills for Context Engineering](https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering)** (Murat Çankoylan) — multi-agent patterns, context-degradation taxonomy, filesystem-as-context. Excellent companions to the lanes + wrap layers.
 

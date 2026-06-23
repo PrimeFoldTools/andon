@@ -4,7 +4,7 @@
 
 A Lean *quality system* for AI-assisted work — every defect becomes a permanent countermeasure. Built by a manufacturing operator, for people who actually ship.
 
-![License: MIT](https://img.shields.io/badge/License-MIT-black.svg) ![Status: v1](https://img.shields.io/badge/status-v1-blue.svg)
+![License: MIT](https://img.shields.io/badge/License-MIT-black.svg) ![Kit: v1](https://img.shields.io/badge/kit-v1-blue.svg)
 
 > *Andon* is the cord on a Toyota line you pull to stop production when something's wrong. This is that cord for AI work: catch the defect, fix it once, and make it un-repeatable.
 
@@ -31,6 +31,12 @@ The result: **every project gets a little smarter, and stays that way.**
 
 The smallest useful piece is a structured memory file — so you can come back to a project after three months and your agent knows exactly where you left off, instead of rebuilding context from scratch.
 
+0. Clone this repo first (you'll copy a couple of files out of it):
+
+   ```bash
+   git clone https://github.com/PrimeFoldTools/andon.git
+   ```
+
 1. In your project, make a memory folder and an index:
 
    ```bash
@@ -41,31 +47,58 @@ The smallest useful piece is a structured memory file — so you can come back t
 2. Add 2–3 lines to `memory/MEMORY.md` — the durable facts your agent keeps forgetting (the stack, the rule, the decision).
 3. Point your agent at it (e.g. in your `CLAUDE.md`: *"Read `memory/MEMORY.md` at the start of every session."*).
 
-That's Layer 1. Full path in [QUICKSTART.md](QUICKSTART.md).
+That's Layer 1. The payoff shows up the *next* time your agent starts — it reads the file instead of re-asking, so there's nothing flashy to watch right now. Want an instant, visible win instead? Run the 30-second hook demo below. Full path in [QUICKSTART.md](QUICKSTART.md).
 
 ---
 
 ## See it work — the andon cord catching a false "done"
 
+The claim-check hook reads the agent's own "done" and asks for evidence before the turn can end. Below is the **verbatim** `systemMessage` the Stop hook emits when a "done" lands with no fresh verification on record — not a mock-up; you can reproduce it in 30 seconds (next block):
+
 ```text
 You:    Add the auth migration.
 Agent:  Done — the migration is complete and the tests are fixed. ✅
 
-        ⛔ andon — a "done" claim with nothing verified on record.
-           matched: "is complete"  ·  "are fixed"
-           run the check, log it, then tell me again.
+⚠️  Claim-check enforcer — done-claim detected without fresh verification log entry.
+Matched phrases:
+  - "is complete"
+  - "are fixed"
+
+Last claim_checks/log.jsonl entry is older than 15min.
+Before stopping this turn:
+  1. Run a real verification (test, end-to-end check, etc.)
+  2. Log it:  python3 log_claim.py "<what you claim>" "<how you verified>"
+  3. Re-reply to the operator
+
+Override: CLAIM_CHECK_ENFORCE_MODE=warn or =off
 
 Agent:  You're right — I hadn't actually run them.
         Ran the suite: 2 failures. Fixing those first.
 ```
 
-That's the claim-check hook (Law 3). It reads the agent's "done" and asks for evidence before the turn can end. Starts in **warn** mode (a nudge); promote to **block** once you trust it. → [HOOK_INSTALL.md](HOOK_INSTALL.md)
+That's the claim-check hook (Law 3). It starts in **warn** mode (a nudge); promote to **block** and the turn won't end on an unverified "done." → [HOOK_INSTALL.md](HOOK_INSTALL.md)
+
+### Reproduce it in 30 seconds
+
+From inside the cloned repo — no install, no config:
+
+```bash
+printf '{"type":"assistant","timestamp":"%s","message":{"content":"the migration is complete and the tests are fixed"}}\n' \
+  "$(python3 -c 'import datetime; print(datetime.datetime.now(datetime.timezone.utc).isoformat())')" > /tmp/t.jsonl
+
+echo '{"transcript_path":"/tmp/t.jsonl"}' \
+  | CLAIM_CHECK_ENFORCE_MODE=warn CLAIM_CHECKS_LOG_PATH=/tmp/none.jsonl python3 hooks/claim_check_hook.py
+```
+
+You get back the exact `systemMessage` shown above. (Or run the suite: `python3 -m pytest hooks/tests/` — 28 tests.)
+
+*Not ready to install a hook? Layer 1 above — a plain memory file, no code — is the on-ramp. Start there and climb when you feel the friction.*
 
 ---
 
-## Proof — the Defect Ledger
+## The Defect Ledger — accumulated, not invented
 
-This system came from real defects, logged and closed one at a time. [`DEFECT_LEDGER.md`](DEFECT_LEDGER.md) is the running record: **defect → root cause → countermeasure → result.** It's the part nobody can copy — it's accumulated, not invented. Read a few entries; you'll recognize your own week.
+The runnable proof is the 30-second demo above. The part nobody can copy is the *record*: [`DEFECT_LEDGER.md`](DEFECT_LEDGER.md) logs real defects one at a time — **defect → root cause → countermeasure → result** — where the countermeasure is a hook or test that makes the whole class hard to repeat, not a note that asks you to remember. Accumulated, not invented. Read a few entries; you'll recognize your own week.
 
 ---
 
@@ -75,11 +108,11 @@ Be honest: "give your agent memory + a mistakes log" is a crowded idea in 2026. 
 
 andon is a different thing: **a complete operating discipline, not a memory tool** — built on the one body of knowledge that already solved "stop defects from recurring" 50 years ago, the Toyota Production System.
 
-- **It's the whole line, not one organ.** Memory + the wrap/orient loop + the claim-check cord + lanes + a starter agent team + the doctrine — one opinionated system with a 5-minute on-ramp.
+- **It's the whole line, not just memory.** Memory + the wrap/orient loop + the claim-check cord + lanes + a starter agent team + the doctrine — one opinionated system with a 5-minute on-ramp.
 - **A defect closes with a *countermeasure*, not a note.** Writing the mistake down isn't the fix — the fix is a hook or test that makes the whole class impossible (*poka-yoke*). That's the factory difference between "we'll try to remember" and "it can't happen again." The [Defect Ledger](DEFECT_LEDGER.md) is where you see it.
 - **It's from someone who ran the floor.** Not a framework reasoned from first principles — 50-year-old manufacturing discipline, ported to agents by someone who lived it.
 
-If that frame resonates, the rest is the proof. If it doesn't, one of the lighter memory repos will serve you better — no hard feelings.
+If that frame resonates, the rest is the proof. If it doesn't, one of the lighter memory repos will serve you better — no hard feelings. (Full credit + a reading list of the tools and ideas andon stands on: [stand-on-these-shoulders.md](docs/stand-on-these-shoulders.md).)
 
 ---
 
@@ -139,16 +172,16 @@ The doctrine is Toyota Production System applied to agents. You don't need the v
 
 ## The doctrine
 
-The full thinking — 11 laws + 5 patterns + one worked mistake-to-countermeasure arc — is in **[docs/THE_OPERATORS_CODE.md](docs/THE_OPERATORS_CODE.md)**. Read it when you want the *why*; the templates above are the *what* and you can start without it.
+The full thinking — 11 laws + 5 patterns + one worked mistake-to-countermeasure arc — is in **[docs/THE_OPERATORS_CODE.md](docs/THE_OPERATORS_CODE.md)** (the doctrine carries its own version — currently v3; this starter kit is v1, and they version independently). Read it when you want the *why*; the templates above are the *what*, and you can start without it.
 
 ---
 
 ## Who made this / staying in touch
 
-I'm a manufacturing-and-operations person who ended up running a one-person company inside Claude Code, and codified everything that kept breaking. This is that system, stripped of my private work. It builds on a lot of other people's tools — see [stand-on-these-shoulders.md](docs/stand-on-these-shoulders.md).
+I spent years on a manufacturing floor running Lean — andon cords, poka-yoke, kaizen, standard work — before I ended up running a one-person company inside Claude Code. When the same AI mistakes kept recurring, I reached for the body of knowledge that already solved "stop defects from coming back" 50 years ago and ported it to agents. This repo is that system, stripped of my private work. It stands on a lot of other people's tools — see [stand-on-these-shoulders.md](docs/stand-on-these-shoulders.md).
 
-If a pattern here saves you a session, I'd genuinely like to hear what you stripped, kept, or added — open an issue. I write more about running AI systems like a production line at **[Hidden Heuristics](https://hiddenheuristics.substack.com)** — no gate, subscribe if you want more.
+If a pattern here saves you a session, I'd like to hear what you stripped, kept, or added — open an issue. I write more about running AI systems like a production line at **[Hidden Heuristics](https://hiddenheuristics.substack.com)** — no gate.
 
-**Status:** shared as-is and maintained as time allows — a one-person side-release. Issues and PRs are welcome (I read them), just don't expect enterprise SLAs. Fork freely.
+**Status:** I run this every day on my own work, so it gets fixed when it breaks. One-person release — issues and PRs welcome (I read them), no enterprise SLAs. Fork freely.
 
 *MIT licensed. Free. Adapt it to your own work.*
