@@ -313,7 +313,7 @@ Index file (`MEMORY.md`): one line per memory file. Sections by topic, not chron
 
 **Don't:**
 
-- Append session logs to load-bearing pages (PWO / OKR / status docs). Those have governance rules.
+- Append session logs to load-bearing pages (roadmap / OKR / status docs). Those have governance rules.
 - Overwrite a parallel session's manifest if their timestamp is newer. Compare first; merge if theirs is newer.
 - Declare "done" while in flow. State what's pending.
 

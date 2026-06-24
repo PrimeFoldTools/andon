@@ -86,7 +86,7 @@ cat handoff/YYYY-MM-DD-HHMM.md
 
 ## Don't
 
-- **Don't append session logs to load-bearing pages** (PWO / OKR / status docs / etc). Those have governance rules — session logs belong in memory + retrieval, not in the page body.
+- **Don't append session logs to load-bearing pages** (roadmap / OKR / status docs / etc). Those have governance rules — session logs belong in memory + retrieval, not in the page body.
 - **Don't overwrite a parallel session's manifest** if their timestamp is newer than yours. Compare timestamps first; merge if their work is newer.
 - **Don't declare "done" while in flow.** If the session ends with three open follow-ups, name them. State what's pending, not just what shipped.
 - **Don't skip wrap because the session was short.** Short sessions are the ones whose context evaporates.
