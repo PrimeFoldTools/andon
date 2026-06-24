@@ -467,7 +467,7 @@ The doctrine is easier to see in motion. This is one full arc from a mistake to 
 
 **Why that wasn't enough.** Two weeks later, the same shape recurred. The skill was aspirational. The agent forgot to invoke it at the moment it most needed to.
 
-**Second codification: the hook.** A Stop hook was added — `claim_check_stop_enforcer.py`. It read the last assistant message, scanned for done-claim phrases ("ready," "shipped," "verified," "X has been resolved," "gap closed"), checked a `claim_checks/log.jsonl` for a verification entry within the last 15 minutes, and blocked the turn-end if a claim was detected without a fresh log entry. Default mode: block. Escape hatches: `CLAIM_CHECK_ENFORCE_MODE=warn` or `=off`.
+**Second codification: the hook.** A Stop hook was added — `claim_check_hook.py` (the one that ships in `hooks/`). It read the last assistant message, scanned for done-claim phrases ("ready," "shipped," "verified," "X has been resolved," "gap closed"), checked a `claim_checks/log.jsonl` for a verification entry within the last 15 minutes, and stopped the turn-end if a claim was detected without a fresh log entry. It started block-by-default; the shipped version is warn-first (a nudge), promotable with `CLAIM_CHECK_ENFORCE_MODE=block` — or `=off` to silence.
 
 **The iterations that followed.** The hook needed three real fixes before it stabilized:
 
