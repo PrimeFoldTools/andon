@@ -475,7 +475,7 @@ The doctrine is easier to see in motion. This is one full arc from a mistake to 
 - *Timezone drift.* The freshness check parsed naive ISO timestamps as local time when they were intended as UTC. On Eastern machines, "fresh" entries drifted 4–10 hours into the "stale" bucket. Fix: parse all timestamps as UTC, consistently, on both read and write.
 - *Verb-pattern overreach.* The first regex caught "ARCHIVED 2026-05-17" but missed "the gap has been closed." Extended to handle adverb + auxiliary slots, ID-prefixed nouns, blockquote-line exemption for verbatim quotes.
 
-**The result.** Entries in the Mistakes Log for that specific class went silent. Not because the agent got smarter — because the agent can't ignore a hook.
+**The result.** Entries in the Mistakes Log for that specific class went silent. Not because the agent got smarter — because ignoring the hook has to be deliberate now; it can't happen by accident.
 
 **What the arc demonstrates:**
 

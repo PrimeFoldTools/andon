@@ -26,7 +26,7 @@ The four-line entries below are the raw material; these are the heuristics they 
 **Defect:** The agent said a change was "complete and tested." It had written the code but never run the tests. I trusted it, moved on, and the gap surfaced hours later.
 **Root cause:** "Done" is the single most expensive word an agent says, and nothing checked it. Polite reminders ("remember to verify") don't survive the moment.
 **Countermeasure:** A Stop hook (`claim_check_hook.py`) that reads the turn-ending message for done-claims and requires a verification log entry before the turn can end. Warn first, block once trusted.
-**Result:** This class went quiet — not because the agent got more careful, but because it can't skip a hook.
+**Result:** This class went quiet — not because the agent got more careful, but because the hook turns skipping verification from an accident into a deliberate act.
 
 ### 2026-04 — "That doesn't exist" (it did)
 

@@ -72,6 +72,24 @@ COMPLETION_VERBS = COMPLETION_VERBS + OPT_IN_VERBS
 _VERBS = "|".join(COMPLETION_VERBS)
 
 CLAIM_PATTERNS = (
+    # Standalone / sentence-start closure markers:
+    # "Done.", "All set.", "Shipped:", "Ready — ..."
+    re.compile(
+        rf"(?im)(?:^|(?<=[.!?])\s+|\n)\s*"
+        rf"(?:done|complete|completed|ready|verified|fixed|resolved|shipped|"
+        rf"production[\s-]ready|all\s+set)\b"
+        rf"(?:\s*(?:[.!:;]|—|-)|\s*$)"
+    ),
+    # Leading action-claim forms — REQUIRE a determiner after the verb so that
+    # ordinary participle-adjective prose ("Fixed income securities…",
+    # "Shipped goods arrived…", "Verified users get a badge…") does NOT
+    # false-fire. Only "Shipped the fix.", "Fixed the tests.",
+    # "Implemented the migration." (verb + determiner + object) trigger.
+    re.compile(
+        r"(?im)(?:^|(?<=[.!?])\s+|\n)\s*"
+        r"(?:shipped|fixed|verified|resolved|completed|implemented)\s+"
+        r"(?:the|this|that|these|those|all|our|your|its|my)\b[^\n.!?]{0,80}"
+    ),
     # "X is/are [already/now/fully] $VERB"
     re.compile(
         rf"\b(?:is|are|has\s+been|have\s+been|now|finally|fully|officially|already)"
@@ -183,6 +201,17 @@ def _is_blockquote_line(text, m_start):
     return saw_gt
 
 
+def _ends_in_question(text, m_end):
+    # Scan from the match end to the next sentence terminator. If that
+    # terminator is "?", the claim sits inside a QUESTION ("Shipped the fix?",
+    # "The tests are fixed now?") — not an assertion — so it must not fire.
+    for i in range(m_end, min(len(text), m_end + 160)):
+        c = text[i]
+        if c in ".!?\n":
+            return c == "?"
+    return False
+
+
 def find_claims(text):
     matches = []
     seen = set()
@@ -191,6 +220,8 @@ def find_claims(text):
             phrase = m.group(0).strip()
             key = phrase.lower()
             if key in seen:
+                continue
+            if _ends_in_question(text, m.end()):
                 continue
             if _is_backtick_wrapped(text, m.start(), m.end()):
                 continue

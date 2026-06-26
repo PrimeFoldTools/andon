@@ -4,9 +4,11 @@
 
 A Lean *quality system* for AI-assisted work — every defect becomes a permanent countermeasure. Built by a manufacturing operator, for people who actually ship.
 
-![License: MIT](https://img.shields.io/badge/License-MIT-black.svg) ![Kit: v1](https://img.shields.io/badge/kit-v1-blue.svg)
+![License: MIT](https://img.shields.io/badge/License-MIT-black.svg) ![Kit: v1](https://img.shields.io/badge/kit-v1-blue.svg) ![Tests](https://github.com/PrimeFoldTools/andon/actions/workflows/tests.yml/badge.svg)
 
 > *Andon* is the cord on a Toyota line you pull to stop production when something's wrong. This is that cord for AI work: catch the defect, fix it once, and make it un-repeatable.
+
+*Not affiliated with [Andon Labs](https://andonlabs.com) (the AI-agent evaluation company). Same Lean word, different project — this is a solo, open-source operating kit.*
 
 ---
 
@@ -21,7 +23,7 @@ If you work inside an AI agent every day, you know the failure modes:
 
 Most "AI tips" make the *output* a little better. None of them stop the *defects from recurring*.
 
-**The fix isn't a better prompt. It's an operating discipline — borrowed from a factory floor.** On a Lean line, every defect becomes a permanent countermeasure so it can't happen twice. Andon does that for AI work: each mistake becomes a logged defect → a countermeasure → and where it matters, a mechanical guard the agent *can't* skip.
+**The fix isn't a better prompt. It's an operating discipline — borrowed from a factory floor.** On a Lean line, every defect becomes a permanent countermeasure so it can't happen twice. Andon does that for AI work: each mistake becomes a logged defect → a countermeasure → and where it matters, a mechanical guard the agent can't skip *by accident* — skipping it has to be a deliberate act.
 
 The result: **every project gets a little smarter, and stays that way.**
 
@@ -76,21 +78,25 @@ Agent:  You're right — I hadn't actually run them.
         Ran the suite: 2 failures. Fixing those first.
 ```
 
-That's the claim-check hook (Law 3). It starts in **warn** mode (a nudge); promote to **block** and the turn won't end on an unverified "done." → [HOOK_INSTALL.md](HOOK_INSTALL.md)
+That's the claim-check hook (Law 3). The agent self-correcting above is **block** mode — the model receives the `reason` and keeps working instead of stopping. It ships in **warn** mode by default (you get that same message as a nudge, then re-prompt); promote to **block** once you trust it. → [HOOK_INSTALL.md](HOOK_INSTALL.md)
+
+> **Honest about what it is:** the agent writes its own verification entry (via `log_claim.py`), so the hook is a *forcing function + visible audit trail* that makes skipping verification a deliberate act instead of an accident — not a cryptographic guarantee. That's the whole point: turn the most expensive word an agent says ("done") into one it has to earn on the record.
 
 ### Reproduce it in 30 seconds
 
 From inside the cloned repo — no install, no config:
 
 ```bash
+rm -f /tmp/andon_claim_checks_none.jsonl
+
 printf '{"type":"assistant","timestamp":"%s","message":{"content":"the migration is complete and the tests are fixed"}}\n' \
   "$(python3 -c 'import datetime; print(datetime.datetime.now(datetime.timezone.utc).isoformat())')" > /tmp/t.jsonl
 
 echo '{"transcript_path":"/tmp/t.jsonl"}' \
-  | CLAIM_CHECK_ENFORCE_MODE=warn CLAIM_CHECKS_LOG_PATH=/tmp/none.jsonl python3 hooks/claim_check_hook.py
+  | CLAIM_CHECK_ENFORCE_MODE=warn CLAIM_CHECKS_LOG_PATH=/tmp/andon_claim_checks_none.jsonl python3 hooks/claim_check_hook.py
 ```
 
-You get back the exact `systemMessage` shown above. (Or run the suite: `python3 -m pytest hooks/tests/` — 28 tests.)
+You get back the exact `systemMessage` shown above. (Or run the suite: `python3 -m pytest hooks/tests/` — they all pass.)
 
 *Not ready to install a hook? Layer 1 above — a plain memory file, no code — is the on-ramp. Start there and climb when you feel the friction.*
 
@@ -109,7 +115,7 @@ Be honest: "give your agent memory + a mistakes log" is a crowded idea in 2026. 
 andon is a different thing: **a complete operating discipline, not a memory tool** — built on the one body of knowledge that already solved "stop defects from recurring" 50 years ago, the Toyota Production System.
 
 - **It's the whole line, not just memory.** Memory + the wrap/orient loop + the claim-check cord + lanes + a starter agent team + the doctrine — one opinionated system with a 5-minute on-ramp.
-- **A defect closes with a *countermeasure*, not a note.** Writing the mistake down isn't the fix — the fix is a hook or test that makes the whole class impossible (*poka-yoke*). That's the factory difference between "we'll try to remember" and "it can't happen again." The [Defect Ledger](DEFECT_LEDGER.md) is where you see it.
+- **A defect closes with a *countermeasure*, not a note.** Writing the mistake down isn't the fix — the fix is a hook or test that makes the whole class harder to repeat (*poka-yoke*). That's the factory difference between "we'll try to remember" and "the system catches it next time." The [Defect Ledger](DEFECT_LEDGER.md) is where you see it.
 - **It's from someone who ran the floor.** Not a framework reasoned from first principles — 50-year-old manufacturing discipline, ported to agents by someone who lived it.
 
 If that frame resonates, the rest is the proof. If it doesn't, one of the lighter memory repos will serve you better — no hard feelings. (Full credit + a reading list of the tools and ideas andon stands on: [stand-on-these-shoulders.md](docs/stand-on-these-shoulders.md).)
@@ -126,6 +132,9 @@ andon/
 ├── HOOK_INSTALL.md      ← install the two hooks (warn-first, with a "turn it off")
 ├── TROUBLESHOOTING.md   ← when something doesn't fire / fires too much
 ├── AGENTS.md            ← point your AI agent at this and it self-installs andon
+├── CONTRIBUTING.md      ← how to report issues, PRs, and hook examples
+├── SECURITY.md          ← local-first security model + responsible reporting
+├── .github/workflows/   ← CI for the Python hooks
 ├── templates/           ← drop-in: CLAUDE.md · MEMORY.md · LANES.md · CONTEXT.md · lane · skill · wrap
 ├── hooks/               ← claim_check_hook.py (catches false "done") · auto_orient.py (loads memory at start) · log_claim.py · tests
 ├── commands/            ← ready-made slash commands: /wrap · /orient · /log-mistake
@@ -155,6 +164,18 @@ Nothing past Layer 1 is mandatory. Climb when you feel the friction the next lay
 
 ---
 
+## Known limits — read before you trust it
+
+andon is deliberately small and honest about what it does *not* do:
+
+- **Fresh verification, not semantic proof.** The claim-check hook confirms a *recent* verification entry exists — it does not prove that entry matches the specific "done" it caught. The agent writes its own log, so this is a forcing function + audit trail that makes skipping verification deliberate, not a guarantee it didn't happen.
+- **Detection is intentionally conservative.** The regex catches common closure forms; some real done-claims won't trigger until you tune `COMPLETION_VERBS` to your writing style. It errs toward missing a claim over false-blocking plain English.
+- **It's a Stop hook, not a PreToolUse hook.** It checks at turn-end, not before a tool runs.
+- **It's only as good as the `log_claim.py` discipline around it.** No log entry, no signal.
+- **Start in `warn` mode.** Promote to `block` only after it behaves well on your work.
+
+---
+
 ## Lean → builder translation
 
 The doctrine is Toyota Production System applied to agents. You don't need the vocabulary to use it — but here's the map:
@@ -162,7 +183,7 @@ The doctrine is Toyota Production System applied to agents. You don't need the v
 | Lean / TPS | In plain terms | Where it shows up here |
 |---|---|---|
 | **Andon** | stop the line when a defect appears | the claim-check hook halting a false "done" |
-| **Poka-yoke** | mistake-proofing — make the error impossible, don't rely on memory | hooks > "remember to…" |
+| **Poka-yoke** | mistake-proofing — make the error harder to repeat, don't rely on memory | hooks > "remember to…" |
 | **Kaizen** | a countermeasure for every defect | the Mistakes Log + Defect Ledger |
 | **Standard work** | one documented best way | the templates + memory schema |
 | **Jidoka** | automated defect detection | the Stop / PreToolUse hooks |

@@ -10,6 +10,8 @@ Written for **Claude Code**. The concepts map to any harness with turn-end / pro
 
 ## 1. Copy the hook files
 
+From the cloned `andon/` repo root:
+
 ```bash
 mkdir -p ~/.claude/hooks
 cp hooks/claim_check_hook.py ~/.claude/hooks/
@@ -62,9 +64,22 @@ The hook checks for a recent entry in `~/.claude/state/claim_checks/log.jsonl`. 
 
 `log_claim.py` creates the log file + its folder on first run — so the first claim won't fail on a missing path.
 
+The check is deliberately simple: **fresh verification exists**, not "the hook
+semantically proved the exact claim." That keeps the hook inspectable and
+low-friction. If you need stricter behavior, customize the log schema and match
+the claim text to the verification text.
+
 ## 5. Promote to block when you trust it
 
 Once warn mode stops surprising you (a week or two), change `=warn` to `=block` in the command. Now an unverified "done" actually stops the turn.
+
+## Known limitations
+
+- The claim-check hook verifies that a **fresh verification entry exists** — it does not semantically prove the exact claim. It's a forcing function + audit trail, not cryptographic proof.
+- Regex detection is **intentionally conservative**; some real done-claims won't trigger until you tune `COMPLETION_VERBS` to your writing style (see *Tuning false-fires* below).
+- The hook is only as good as the **`log_claim.py` discipline** around it — no log entry, no signal.
+- **Start in warn mode.** Promote to block only after it behaves well on your work.
+- It is a **Stop hook, not a PreToolUse hook** — it checks at turn-end, not before a tool call.
 
 ## The second hook: auto-orient (loads memory at session start)
 
