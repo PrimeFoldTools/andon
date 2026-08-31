@@ -168,8 +168,8 @@ Nothing past Layer 1 is mandatory. Climb when you feel the friction the next lay
 
 andon is deliberately small and honest about what it does *not* do:
 
-- **Fresh verification, not semantic proof.** The claim-check hook confirms a *recent* verification entry exists — it does not prove that entry matches the specific "done" it caught. The agent writes its own log, so this is a forcing function + audit trail that makes skipping verification deliberate, not a guarantee it didn't happen.
-- **Detection is intentionally conservative.** The regex catches common closure forms; some real done-claims won't trigger until you tune `COMPLETION_VERBS` to your writing style. It errs toward missing a claim over false-blocking plain English.
+- **Fresh verification, not semantic proof.** The claim-check hook confirms a *recent* verification entry exists — it does not prove that entry matches the specific "done" it caught. The window is time-based, not claim-matched: any log entry in the last 15 minutes satisfies any done-claim in that window. It raises the cost of a false "done" from zero to "you had to put a line on the record"; it does not bind the line to the claim. The agent writes its own log, so this is a forcing function + audit trail that makes skipping verification deliberate, not a guarantee it didn't happen.
+- **Detection is intentionally conservative.** The regex catches common closure forms; some real done-claims won't trigger until you tune `COMPLETION_VERBS` to your writing style. It errs toward missing a claim over false-blocking plain English — and it catches the habitual over-claim, not an agent deliberately paraphrasing around a regex it can read.
 - **It's a Stop hook, not a PreToolUse hook.** It checks at turn-end, not before a tool runs.
 - **It's only as good as the `log_claim.py` discipline around it.** No log entry, no signal.
 - **Start in `warn` mode.** Promote to `block` only after it behaves well on your work.
