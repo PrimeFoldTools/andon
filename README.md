@@ -203,6 +203,6 @@ I spent years on a manufacturing floor running Lean — andon cords, poka-yoke, 
 
 If a pattern here saves you a session, I'd like to hear what you stripped, kept, or added — open an issue. I write more about running AI systems like a production line at **[Hidden Heuristics](https://hiddenheuristics.substack.com)** — no gate.
 
-**Status:** I run this every day on my own work, so it gets fixed when it breaks. One-person release — issues and PRs welcome (I read them), no enterprise SLAs. Fork freely.
+**Status:** I use this on my own work, so it gets fixed when it breaks. One-person release — issues and PRs welcome (I read them), no enterprise SLAs. Fork freely.
 
 *MIT licensed. Free. Adapt it to your own work.*
