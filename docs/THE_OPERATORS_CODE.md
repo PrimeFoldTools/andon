@@ -47,7 +47,7 @@ This is the distillation of one such system — built, broken, re-built, patched
 
 The audience is anyone running Claude Code (or a similar agent) seriously: parallel sessions, skills + MCPs, the terminal as mission control. You already know the *what*. This is the *how* — the operating discipline that keeps a heavily-used agent system from eating itself.
 
-None of this is invented from nothing. The "agent as a system you operate" framing echoes Karpathy's LLM-OS idea; the spine underneath is Lean manufacturing. "Make the mistake un-repeatable" is *poka-yoke* — Toyota mistake-proofing. The Mistakes Log is a *kaizen* loop. The stop-the-turn hook is an *andon* cord: pull it when a defect appears. I spent years running Lean on a factory floor before this; the whole guide is that discipline applied to agents.
+None of this is invented from nothing. The "agent as a system you operate" framing echoes Karpathy's LLM-OS idea; the spine underneath is Lean manufacturing. "Make the mistake un-repeatable" is *poka-yoke* — Toyota mistake-proofing. The Mistakes Log is a *kaizen* loop. The stop-the-turn hook is an *andon* cord: pull it when a defect appears. My background is 15 years in manufacturing, up to production manager, where we ran on applied Lean and Six Sigma — Paul Akers style, more applied than exact; the whole guide is that discipline applied to agents.
 
 Three parts:
 

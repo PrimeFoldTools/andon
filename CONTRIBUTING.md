@@ -46,5 +46,5 @@ issue first and explain why the tradeoff is worth it.
 
 ## Maintainer note
 
-This is a one-person project I run in my own work. I read issues and PRs, but
-there are no response-time guarantees.
+This is a solo-maintained project, stripped from the system I run daily. I read
+issues and PRs, but there are no response-time guarantees.

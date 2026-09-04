@@ -199,10 +199,10 @@ The full thinking — 11 laws + 5 patterns + one worked mistake-to-countermeasur
 
 ## Who made this / staying in touch
 
-I spent years on a manufacturing floor running Lean — andon cords, poka-yoke, kaizen, standard work — before I ended up running a one-person company inside Claude Code. When the same AI mistakes kept recurring, I reached for the body of knowledge that already solved "stop defects from coming back" 50 years ago and ported it to agents. This repo is that system, stripped of my private work. It stands on a lot of other people's tools — see [stand-on-these-shoulders.md](docs/stand-on-these-shoulders.md).
+I came up in manufacturing — 15 years, up to production manager — where the discipline was Lean and Six Sigma: you make a defect impossible to repeat, you don't just fix it. Now I run my own work on a fleet of AI agents, and when the same mistakes kept recurring I ported that discipline to them. This repo is that system, stripped of my private work — it stands on a lot of [other people's tools](docs/stand-on-these-shoulders.md).
 
-If a pattern here saves you a session, I'd like to hear what you stripped, kept, or added — open an issue. I write more about running AI systems like a production line at **[Hidden Heuristics](https://hiddenheuristics.substack.com)** — no gate.
+If a pattern here saves you a session, I'd like to hear what you stripped, kept, or added — open an issue. More of what I build is at **[github.com/PrimeFoldTools](https://github.com/PrimeFoldTools)**.
 
-**Status:** I use this on my own work, so it gets fixed when it breaks. One-person release — issues and PRs welcome (I read them), no enterprise SLAs. Fork freely.
+**Status:** Stripped from the system I run daily, so it gets fixed when it breaks. Solo-maintained — issues and PRs welcome (I read them), no enterprise SLAs. Fork freely.
 
 *MIT licensed. Free. Adapt it to your own work.*
