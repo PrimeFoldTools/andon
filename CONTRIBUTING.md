@@ -34,6 +34,9 @@ issue first and explain why the tradeoff is worth it.
 
 ## Pull request expectations
 
+PRs are reviewed against the standing check sheet in
+[docs/INCOMING_INSPECTION.md](docs/INCOMING_INSPECTION.md).
+
 - Keep changes focused. One bug or doc improvement per PR is perfect.
 - Add or update a regression test when hook behavior changes.
 - Default enforcement stays gentle: warn first, block only when the operator opts
