@@ -6,7 +6,10 @@ not a mood. The same reason a receiving dock has a check sheet.
 On a factory floor, parts from a supplier don't go straight to the line. They
 pass incoming inspection: a fixed check sheet, applied the same way every time,
 before the parts touch anything. A pull request is the same object — work from
-outside, offered, not yet accepted. Nothing in this repo changes until **Merge**.
+outside, offered, not yet accepted. Nothing enters `main` until **Merge** —
+but note the dock is not inert: opening a PR is itself an event, and CI runs
+the contributor's code once a run is approved. That is why reading comes
+before running.
 
 ## The check sheet
 
@@ -17,26 +20,29 @@ Every PR, in order:
    diff is unreviewable, and unreviewable is a reject at the dock — ask for a
    split, don't inspect harder.
 
-2. **CI must be green.** The test suite runs automatically on every PR
+2. **Read the diff before anything runs.** Correctness and safety are
 
-   (`.github/workflows/tests.yml`). Red = inspection stops. No exceptions,
+   different inspections, and safety comes first because CI executes the
+   contributor's code. The safety pass asks: does this diff do anything beyond
+   what the PR description says? Network calls, writes outside the repo,
+   subprocess use, new dependencies, obfuscated strings? Changes under
+   `.github/` (workflows, permissions) get the same scrutiny — CI config is
+   code that runs with the repo's credentials. Only after this read should a
+   first-time contributor's held workflow run be approved. The hooks are
+   stdlib-only on purpose — a new dependency is an issue-first conversation
+   (see [CONTRIBUTING](../CONTRIBUTING.md)).
+
+3. **CI must be green.** The test suite runs on every PR
+
+   (`.github/workflows/tests.yml`), with read-only repo permissions and
+   non-persisted credentials. Red = inspection stops. No exceptions,
    including for the maintainer.
 
-3. **Behavior changes carry tests.** A regression test is the part of a diff
+4. **Behavior changes carry tests.** A regression test is the part of a diff
 
    that argues for itself — but read the tests too: a test that asserts
    nothing is green as well. Green CI is evidence for the inspection, not
    the inspection.
-
-4. **Safety review, as its own question.** Correctness and safety are different
-
-   inspections. The safety pass asks: does this diff do anything beyond what
-   the PR description says? Network calls, writes outside the repo, subprocess
-   use, new dependencies, obfuscated strings? Changes under `.github/`
-   (workflows, permissions) get the same scrutiny — CI config is code that
-   runs with the repo's credentials. The hooks are stdlib-only on
-   purpose — a new dependency is an issue-first conversation (see
-   [CONTRIBUTING](../CONTRIBUTING.md)).
 
 5. **Questions in the open.** "What does this line do?" asked in the PR thread
 
@@ -47,7 +53,7 @@ Every PR, in order:
 
    bad merge is one revert away — for the code. A revert cannot un-publish a
    leaked secret or undo an external side effect, which is why the safety
-   pass happens before the stamp, not after.
+   pass happens before anything runs, not after.
 
 ## What acceptance costs
 

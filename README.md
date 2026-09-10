@@ -143,6 +143,7 @@ andon/
 ├── examples/            ← a FILLED-IN sample project (not empty placeholders)
 └── docs/
     ├── THE_OPERATORS_CODE.md        ← the full doctrine: 11 laws + 5 patterns
+    ├── INCOMING_INSPECTION.md       ← the check sheet incoming PRs go through
     ├── integrations.md              ← wiring to Obsidian / vector search / Notion
     └── stand-on-these-shoulders.md  ← the tools + repos this builds on
 ```
