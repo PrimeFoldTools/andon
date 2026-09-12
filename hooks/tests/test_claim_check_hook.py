@@ -12,6 +12,8 @@ import json
 import os
 import subprocess
 import sys
+
+import pytest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -132,6 +134,128 @@ def test_benign_participle_openers_do_not_fire(tmp_path):
         out = _run({"transcript_path": _transcript(tmp_path, text)},
                    {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
         assert out["continue"] is True, text
+
+
+# ---- recall fixture (issue #3): realistic turn-endings that MUST fire ----
+# Before this fixture existed, 9 of these 13 were missed: the sentence-start
+# patterns anchored to ^ so any leading subject defeated them, "implemented" was
+# missing from the standalone list, and there was no pattern for evidence-claims
+# ("the tests pass", "CI is green") or subject-noun closures ("Task complete!").
+# Each line here is a real claim shape an agent produces; if one stops firing,
+# recall regressed silently and this is what makes it loud.
+REALISTIC_DONE_CLAIMS = (
+    "Task complete!",
+    "I've implemented the retry logic in fetch_page.",
+    "I finished the migration and pushed to main.",
+    "the change is live",
+    "The fix is in place.",
+    "Implemented. Let me know if you want the tests too.",
+    "I've added the retry logic and the three new tests pass.",
+    "Your CI is green again.",
+    "Everything is now wired up.",
+    "The refactor is done.",
+    "Fixed the off-by-one in the paginator.",
+    "All set — the deploy went through.",
+    "**DONE** — schema migration applied.",
+)
+
+
+def test_realistic_done_claims_fire(tmp_path):
+    for text in REALISTIC_DONE_CLAIMS:
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out.get("decision") == "block", text
+
+
+def test_first_person_lead_in_fires_only_with_determiner(tmp_path):
+    # The optional "I've / we have / I just" prefix must not loosen the
+    # determiner rule that keeps participle-adjective prose exempt.
+    fires = ("I've fixed the tests.", "We have shipped the fix.", "I just resolved this ticket.")
+    exempt = ("We have verified users in the table.", "I have finished reading the spec.",
+              "It finished the migration overnight.")
+    for text in fires:
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out.get("decision") == "block", text
+    for text in exempt:
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out["continue"] is True, text
+
+
+def test_evidence_claims_need_a_check_noun(tmp_path):
+    # "pass" / "green" are only claims when the subject is a check. Everyday
+    # uses of the same words must not fire.
+    for text in (
+        "The light is green.",
+        "The function is passing None to the callback.",
+        "The button is wired to the handler.",
+        "Live migration is supported.",
+        "The tests should pass after that.",
+        "The tests will pass once the fixture is updated.",
+        "The tests don't pass yet.",
+    ):
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out["continue"] is True, text
+
+
+def test_conditional_lead_in_does_not_fire(tmp_path):
+    # Every line here MATCHES a claim pattern ("tests pass", "build is green",
+    # "is complete") and is exempted ONLY by the conditional-clause guard.
+    # Deleting _is_conditional_clause makes all of them block, so they exercise
+    # the guard rather than pass by luck.
+    for text in (
+        "If the tests pass, we can ship on Friday.",
+        "Once the build is green, cut the release.",
+        "Unless the tests pass, don't merge.",
+        "Make sure CI is green before merging.",
+        "Run pytest to confirm the tests pass.",
+        "Not all tests pass yet.",
+        "I hope the migration is complete by Monday.",
+    ):
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out["continue"] is True, text
+
+
+def test_conditional_guard_is_clause_scoped(tmp_path):
+    # The guard inspects only the clause the match sits in. A lead-in in a
+    # DIFFERENT clause does not launder a real claim.
+    for text in (
+        "After adding the retry logic, the tests pass.",
+        "The change is now live, if you want to test it.",
+    ):
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out.get("decision") == "block", text
+
+
+def test_benign_prose_does_not_fire(tmp_path):
+    # Sentences that share vocabulary with claims but assert nothing about the
+    # work being finished.
+    for text in (
+        "I'm now working on the tests.",
+        "Task completion is tracked in the ledger.",
+        "Fix versions are listed in the changelog.",
+        "Build artifacts go in dist/.",
+        "Change done to the schema was minimal.",
+        "Do the tests pass?",
+        "Is the change live?",
+    ):
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out["continue"] is True, text
+
+
+@pytest.mark.xfail(strict=True, reason="known miss: 'confirmed' is too false-positive-prone to add blind")
+def test_known_miss_confirmed_with_curl(tmp_path):
+    # Documented gap, pinned so a fix is noticed (strict xfail turns green into
+    # a failure, which is the prompt to delete this marker).
+    out = _run({"transcript_path": _transcript(tmp_path,
+                                                "The endpoint now returns 200 and I confirmed it with curl.")},
+               {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+    assert out.get("decision") == "block"
 
 
 def test_no_claim_passes(tmp_path):

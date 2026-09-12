@@ -32,6 +32,8 @@ The two are NOT interchangeable — using the wrong one is a silent no-op.
 CUSTOMIZE
   - COMPLETION_VERBS — closure verbs that trigger the check (kept tight to avoid false-fires).
   - OPT_IN_VERBS — looser verbs; enable only if your domain needs them.
+  - EVIDENCE_NOUNS — the things whose "pass / green" is itself a done-claim (tests, CI, build).
+  - CLOSURE_NOUNS — subjects for the bare "Task complete!" / "Migration done." form.
   - CLAIM_CHECK_FRESH_MIN — "fresh" window (15 is forgiving; don't go below ~5).
   - CLAIM_CHECKS_LOG_PATH env var — override the log location.
 """
@@ -58,18 +60,44 @@ DEFAULT_MODE = "warn"           # warn | block | off  (start warn; promote to bl
 # Unambiguous closure verbs — kept tight so everyday prose ("the data is current",
 # "are we done here?") does NOT false-fire.
 COMPLETION_VERBS = (
-    "ready", "shipped", "complete", "completed", "done",
+    "ready", "shipped", "complete", "completed", "done", "finished",
     "verified", "fixed", "resolved", "production[\\s-]ready",
+    # State-of-the-thing closures: "the change is live", "the fix is in place",
+    # "everything is now wired up". Bare "wired" is NOT included — "the button is
+    # wired to the handler" is description, not closure.
+    "live", "in[\\s-]place", "wired[\\s-]up",
 )
 # Looser verbs — higher false-positive rate in normal English. Add deliberately if your
-# domain needs them: "live", "functional", "applied", "patched", "synced",
-# "current", "in[\\s-]sync", "wired".
+# domain needs them: "functional", "applied", "patched", "synced", "current",
+# "in[\\s-]sync". NOT "working" — "I'm now working on the tests" would fire.
 OPT_IN_VERBS = ()
 COMPLETION_VERBS = COMPLETION_VERBS + OPT_IN_VERBS
+
+# Evidence-claims: asserting a RESULT ("the tests pass", "CI is green") is the
+# claim most in need of a verification record behind it — it is the one that
+# sounds like evidence. Kept to nouns that name a check, so "the light is green"
+# and "the function is passing None" do not fire.
+EVIDENCE_NOUNS = (
+    "tests?", "specs?", "ci", "builds?", "pipelines?", "checks?", "suite",
+    "lints?", "linters?", "typechecks?",
+)
+# Subject-noun closures: "Task complete!", "Migration done." — a small noun list
+# plus a closure verb, anchored to sentence start, so it stays narrow.
+CLOSURE_NOUNS = (
+    "task", "work", "job", "migration", "change", "fix", "deploy", "deployment",
+    "refactor", "build", "patch", "update", "release", "rollout", "feature",
+    "implementation", "cleanup", "ticket", "pr", "merge",
+)
 
 
 # ---------- PATTERNS ----------
 _VERBS = "|".join(COMPLETION_VERBS)
+_EVIDENCE = "|".join(EVIDENCE_NOUNS)
+_CLOSURE_NOUNS = "|".join(CLOSURE_NOUNS)
+# Optional first-person lead-in for the sentence-start forms. Agents write
+# "I've implemented the migration." far more often than "Implemented the
+# migration." — without this the leading subject defeated both anchors.
+_SUBJECT = r"(?:(?:i|we)(?:'ve|\s+have|\s+just|\s+have\s+just)?\s+)?"
 
 CLAIM_PATTERNS = (
     # Standalone / sentence-start closure markers:
@@ -77,24 +105,48 @@ CLAIM_PATTERNS = (
     re.compile(
         rf"(?im)(?:^|(?<=[.!?])\s+|\n)\s*"
         rf"(?:done|complete|completed|ready|verified|fixed|resolved|shipped|"
-        rf"production[\s-]ready|all\s+set)\b"
+        rf"implemented|finished|production[\s-]ready|all\s+set)\b"
+        rf"(?:\s*(?:[.!:;]|—|-)|\s*$)"
+    ),
+    # Subject-noun closure: "Task complete!", "Migration done." — bare noun +
+    # closure verb with no copula. ("The fix is done." is the auxiliary
+    # pattern below, not this one.)
+    re.compile(
+        rf"(?im)(?:^|(?<=[.!?])\s+|\n)\s*"
+        rf"(?:(?:the|this|that)\s+)?(?:{_CLOSURE_NOUNS})\s+"
+        rf"(?:done|complete|completed|finished|shipped|deployed|merged|applied|verified)\b"
         rf"(?:\s*(?:[.!:;]|—|-)|\s*$)"
     ),
     # Leading action-claim forms — REQUIRE a determiner after the verb so that
     # ordinary participle-adjective prose ("Fixed income securities…",
     # "Shipped goods arrived…", "Verified users get a badge…") does NOT
     # false-fire. Only "Shipped the fix.", "Fixed the tests.",
-    # "Implemented the migration." (verb + determiner + object) trigger.
+    # "Implemented the migration." (verb + determiner + object) trigger — with or
+    # without a first-person lead-in ("I've implemented the migration.",
+    # "We have fixed the tests.", "I finished the migration."). The determiner
+    # requirement is what keeps "We have verified users in the table" exempt.
     re.compile(
-        r"(?im)(?:^|(?<=[.!?])\s+|\n)\s*"
-        r"(?:shipped|fixed|verified|resolved|completed|implemented)\s+"
-        r"(?:the|this|that|these|those|all|our|your|its|my)\b[^\n.!?]{0,80}"
+        rf"(?im)(?:^|(?<=[.!?])\s+|\n)\s*{_SUBJECT}"
+        rf"(?:shipped|fixed|verified|resolved|completed|implemented|finished)\s+"
+        rf"(?:the|this|that|these|those|all|our|your|its|my)\b[^\n.!?]{{0,80}}"
     ),
     # "X is/are [already/now/fully] $VERB"
     re.compile(
         rf"\b(?:is|are|has\s+been|have\s+been|now|finally|fully|officially|already)"
         rf"(?:\s+(?:already|just|now|fully))?"
         rf"\s+(?:{_VERBS})\b",
+        re.IGNORECASE,
+    ),
+    # Evidence-claims: "the tests pass", "all 3 tests pass", "CI is green again",
+    # "the build is passing". The noun must be a check (EVIDENCE_NOUNS); only a
+    # short list of linking words may sit between it and pass/green, so "the
+    # tests should pass" / "the tests will pass" / "the tests don't pass" do not
+    # match. Conditional lead-ins ("If the tests pass, …") are handled by
+    # _is_conditional_clause() below, not here.
+    re.compile(
+        rf"\b(?:{_EVIDENCE})\b"
+        rf"(?:\s+(?:are|is|all|now|again|still|both))*"
+        rf"\s+(?:pass(?:es|ed|ing)?|green)\b",
         re.IGNORECASE,
     ),
     # Bolded markers
@@ -106,6 +158,20 @@ CLAIM_PATTERNS = (
 EXEMPT_CONTEXT = (
     re.compile(r'["“]\s*[^"”]{0,80}\bis\s+(?:done|ready|complete)\b[^"”]{0,80}\s*["”]'),
     re.compile(r"\bwould\s+(?:be|claim|say)\s+(?:is|are)\s+", re.IGNORECASE),
+)
+
+# A claim inside a conditional, hoped-for, negated, or instructed clause is not
+# an assertion: "If the tests pass, we ship Friday." / "Once the build is green,
+# cut the release." / "Not all tests pass yet." / "Run pytest to confirm the
+# tests pass." Only the clause the match sits in is inspected (back to the last
+# , ; : . ! ? or line start), so "After adding the retry, the tests pass." — a
+# real claim in its own clause — still fires.
+CONDITIONAL_LEAD_IN = re.compile(
+    r"\b(?:if|once|when|whenever|unless|until|after|before|assuming|provided|"
+    r"whether|should|would|might|may|must|not|no|never|hope|hoping|"
+    r"expect(?:ed|ing)?|ensure|ensuring|make\s+sure|so\s+that|"
+    r"to\s+(?:see|check|confirm|verify|make|get|ensure))\b",
+    re.IGNORECASE,
 )
 
 
@@ -212,6 +278,11 @@ def _ends_in_question(text, m_end):
     return False
 
 
+def _is_conditional_clause(text, m_start):
+    clause_start = max(text.rfind(c, 0, m_start) for c in ".!?;:,\n") + 1
+    return bool(CONDITIONAL_LEAD_IN.search(text[clause_start:m_start]))
+
+
 def find_claims(text):
     matches = []
     seen = set()
@@ -222,6 +293,8 @@ def find_claims(text):
             if key in seen:
                 continue
             if _ends_in_question(text, m.end()):
+                continue
+            if _is_conditional_clause(text, m.start()):
                 continue
             if _is_backtick_wrapped(text, m.start(), m.end()):
                 continue

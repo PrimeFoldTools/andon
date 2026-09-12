@@ -26,7 +26,7 @@ The four-line entries below are the raw material; these are the heuristics they 
 **Defect:** The agent said a change was "complete and tested." It had written the code but never run the tests. I trusted it, moved on, and the gap surfaced hours later.
 **Root cause:** "Done" is the single most expensive word an agent says, and nothing checked it. Polite reminders ("remember to verify") don't survive the moment.
 **Countermeasure:** A Stop hook (`claim_check_hook.py`) that reads the turn-ending message for done-claims and requires a verification log entry before the turn can end. Warn first, block once trusted.
-**Result:** When the detector recognizes a done-claim, the hook makes an unlogged verification gap visible instead of letting it pass silently. It catches forgetting-to-verify, not lying-about-it: the agent still writes its own evidence, and missed claim phrasings remain a known limit (see issue #3).
+**Result:** When the detector recognizes a done-claim, the hook makes an unlogged verification gap visible instead of letting it pass silently. It catches forgetting-to-verify, not lying-about-it: the agent still writes its own evidence, and a done-claim phrased outside the patterns still passes unseen (see the recall entry below).
 
 ### 2026-04 — "That doesn't exist" (it did)
 
@@ -97,6 +97,13 @@ The four-line entries below are the raw material; these are the heuristics they 
 **Root cause:** The search felt slower than the build, so it got skipped.
 **Countermeasure:** Search-before-building, every time: grep the code, check memory, look for an existing tool. A 30-second search beats three sessions of duplicate-bug cleanup.
 **Result:** Less duplication, fewer subtly-divergent twins.
+
+### 2026-09 — Tightened for precision, lost the recall
+
+**Defect:** The claim detector caught 4 of 13 ordinary done-claims. `Implemented the migration.` fired; `I've implemented the migration.` — how agents actually write — did not. `Task complete!`, `The fix is in place.`, `the tests pass` and `CI is green` all passed unseen. Reported with a repro in issue #3.
+**Root cause:** Every false-positive fix narrowed the patterns and nothing measured what the narrowing cost. Both sentence-start patterns were anchored so any leading subject defeated them; there was no pattern for asserting a *result*, which is the claim that most needs evidence behind it because it sounds like evidence.
+**Countermeasure:** An optional first-person lead-in on the sentence-start forms (the determiner rule that protects `Fixed income securities…` is untouched), an evidence-claim pattern restricted to check nouns, a subject-noun closure form, and a clause-scoped guard so `If the tests pass, …` stays exempt. The 13 examples and a benign set are a checked-in fixture: a recall regression now fails CI instead of surfacing in someone else's issue.
+**Result:** 12 of 13 fire, 0 of the benign set. The remaining miss (`I confirmed it with curl`) is pinned as a strict expected-failure so a fix is noticed, not a silent surprise.
 
 ### 2026-06 — Reversed a right answer when pushed
 
