@@ -62,10 +62,18 @@ DEFAULT_MODE = "warn"           # warn | block | off  (start warn; promote to bl
 COMPLETION_VERBS = (
     "ready", "shipped", "complete", "completed", "done", "finished",
     "verified", "fixed", "resolved", "production[\\s-]ready",
-    # State-of-the-thing closures: "the change is live", "the fix is in place",
-    # "everything is now wired up". Bare "wired" is NOT included — "the button is
-    # wired to the handler" is description, not closure.
-    "live", "in[\\s-]place", "wired[\\s-]up",
+    # State-of-the-thing closures: "the fix is in place", "everything is now
+    # wired up". Bare "wired" is NOT included — "the button is wired to the
+    # handler" is description, not closure. "live" is below, it needs a guard.
+    "in[\\s-]place", "wired[\\s-]up",
+)
+# "live" is a closure only when it ENDS the clause: "the change is live",
+# "the change is live now". Attributive and compound uses are ordinary English
+# — "this is live data", "is live-streaming to viewers" — so it carries its own
+# terminal guard instead of sitting in the list above.
+LIVE_VERB = (
+    r"live(?![-\u2010-\u2015\w])"
+    r"(?=\s*(?:[.,;:!?)\]]|$|\b(?:now|again|already|and|on|in|for)\b))"
 )
 # Looser verbs — higher false-positive rate in normal English. Add deliberately if your
 # domain needs them: "functional", "applied", "patched", "synced", "current",
@@ -91,7 +99,7 @@ CLOSURE_NOUNS = (
 
 
 # ---------- PATTERNS ----------
-_VERBS = "|".join(COMPLETION_VERBS)
+_VERBS = "|".join(COMPLETION_VERBS + (LIVE_VERB,))
 _EVIDENCE = "|".join(EVIDENCE_NOUNS)
 _CLOSURE_NOUNS = "|".join(CLOSURE_NOUNS)
 # Optional first-person lead-in for the sentence-start forms. Agents write
@@ -138,15 +146,20 @@ CLAIM_PATTERNS = (
         re.IGNORECASE,
     ),
     # Evidence-claims: "the tests pass", "all 3 tests pass", "CI is green again",
-    # "the build is passing". The noun must be a check (EVIDENCE_NOUNS); only a
-    # short list of linking words may sit between it and pass/green, so "the
-    # tests should pass" / "the tests will pass" / "the tests don't pass" do not
-    # match. Conditional lead-ins ("If the tests pass, …") are handled by
-    # _is_conditional_clause() below, not here.
+    # "the build is passing". Three things keep this narrow:
+    #   - the noun must be a check (EVIDENCE_NOUNS), so "the light is green" is out;
+    #   - only a short list of linking words may sit between the noun and the
+    #     result word, so "the tests should pass" / "will pass" / "don't pass" is out;
+    #   - the result word must END its clause, so a transitive use with an object
+    #     — "the pipeline passes messages downstream" — is out.
+    # Lead-ins that make the sentence non-assertive ("If the tests pass, …",
+    # "I can't confirm the tests pass") are handled by _is_non_assertive_clause().
     re.compile(
         rf"\b(?:{_EVIDENCE})\b"
         rf"(?:\s+(?:are|is|all|now|again|still|both))*"
-        rf"\s+(?:pass(?:es|ed|ing)?|green)\b",
+        rf"\s+(?:pass(?:es|ed|ing)?|green)\b"
+        rf"(?=\s*(?:[.,;:!?)\]\u2014\u2013]|$"
+        rf"|\b(?:now|again|still|cleanly|locally|too|both|and|on|in|for|under|after)\b))",
         re.IGNORECASE,
     ),
     # Bolded markers
@@ -160,19 +173,24 @@ EXEMPT_CONTEXT = (
     re.compile(r"\bwould\s+(?:be|claim|say)\s+(?:is|are)\s+", re.IGNORECASE),
 )
 
-# A claim inside a conditional, hoped-for, negated, or instructed clause is not
-# an assertion: "If the tests pass, we ship Friday." / "Once the build is green,
-# cut the release." / "Not all tests pass yet." / "Run pytest to confirm the
-# tests pass." Only the clause the match sits in is inspected (back to the last
-# , ; : . ! ? or line start), so "After adding the retry, the tests pass." — a
-# real claim in its own clause — still fires.
-CONDITIONAL_LEAD_IN = re.compile(
-    r"\b(?:if|once|when|whenever|unless|until|after|before|assuming|provided|"
-    r"whether|should|would|might|may|must|not|no|never|hope|hoping|"
+# A claim is only a claim when the clause ASSERTS it. Four ways a clause fails
+# to: it is conditional ("If the tests pass, we ship Friday."), hoped-for
+# ("I hope the migration is complete"), negated ("Not all tests pass yet.",
+# "I can't confirm the tests pass.") or attributed to someone else ("The
+# contributor says the tests pass."). Any n't contraction counts as negation.
+NON_ASSERTION_LEAD_IN = re.compile(
+    r"(?:\b(?:if|once|when|whenever|unless|until|after|before|assuming|provided|"
+    r"whether|should|would|might|may|must|not|no|never|nor|cannot|hope|hoping|"
     r"expect(?:ed|ing)?|ensure|ensuring|make\s+sure|so\s+that|"
-    r"to\s+(?:see|check|confirm|verify|make|get|ensure))\b",
+    r"says?|said|claims?|claimed|reports?|reported|told|according\s+to|"
+    r"to\s+(?:see|check|confirm|verify|make|get|ensure))\b"
+    r"|\w+n[\u2019']t\b)",
     re.IGNORECASE,
 )
+# Clause boundaries. Em and en dashes divide clauses as firmly as a comma does
+# — without them "I hope this helps — the fix is complete." reads as one
+# hoped-for clause and a real claim gets suppressed.
+CLAUSE_BOUNDARIES = ".!?;:,\n\u2014\u2013"
 
 
 # ---------- EMIT HELPERS ----------
@@ -278,9 +296,12 @@ def _ends_in_question(text, m_end):
     return False
 
 
-def _is_conditional_clause(text, m_start):
-    clause_start = max(text.rfind(c, 0, m_start) for c in ".!?;:,\n") + 1
-    return bool(CONDITIONAL_LEAD_IN.search(text[clause_start:m_start]))
+def _is_non_assertive_clause(text, m_start):
+    """True if the clause holding the match hedges, negates, or attributes it.
+    Only that clause is inspected — back to the last boundary character — so
+    "After adding the retry, the tests pass." still fires on its own clause."""
+    clause_start = max(text.rfind(c, 0, m_start) for c in CLAUSE_BOUNDARIES) + 1
+    return bool(NON_ASSERTION_LEAD_IN.search(text[clause_start:m_start]))
 
 
 def find_claims(text):
@@ -294,7 +315,7 @@ def find_claims(text):
                 continue
             if _ends_in_question(text, m.end()):
                 continue
-            if _is_conditional_clause(text, m.start()):
+            if _is_non_assertive_clause(text, m.start()):
                 continue
             if _is_backtick_wrapped(text, m.start(), m.end()):
                 continue

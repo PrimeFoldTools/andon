@@ -202,9 +202,9 @@ def test_evidence_claims_need_a_check_noun(tmp_path):
 
 def test_conditional_lead_in_does_not_fire(tmp_path):
     # Every line here MATCHES a claim pattern ("tests pass", "build is green",
-    # "is complete") and is exempted ONLY by the conditional-clause guard.
-    # Deleting _is_conditional_clause makes all of them block, so they exercise
-    # the guard rather than pass by luck.
+    # "is complete") and is exempted ONLY by the non-assertive-clause guard.
+    # Deleting _is_non_assertive_clause makes all of them block, so they
+    # exercise the guard rather than pass by luck.
     for text in (
         "If the tests pass, we can ship on Friday.",
         "Once the build is green, cut the release.",
@@ -221,10 +221,15 @@ def test_conditional_lead_in_does_not_fire(tmp_path):
 
 def test_conditional_guard_is_clause_scoped(tmp_path):
     # The guard inspects only the clause the match sits in. A lead-in in a
-    # DIFFERENT clause does not launder a real claim.
+    # DIFFERENT clause does not launder a real claim. The dash cases matter
+    # because an em/en dash divides clauses as firmly as a comma: without it in
+    # CLAUSE_BOUNDARIES the "I hope" swallows a claim main already catches.
     for text in (
         "After adding the retry logic, the tests pass.",
         "The change is now live, if you want to test it.",
+        "I hope this helps — the fix is complete.",
+        "I hope this helps – the fix is complete.",
+        "If you want, I can revert — the migration is done.",
     ):
         out = _run({"transcript_path": _transcript(tmp_path, text)},
                    {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
@@ -246,6 +251,91 @@ def test_benign_prose_does_not_fire(tmp_path):
         out = _run({"transcript_path": _transcript(tmp_path, text)},
                    {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
         assert out["continue"] is True, text
+
+
+def test_negated_and_attributed_claims_do_not_fire(tmp_path):
+    # A clause that NEGATES or ATTRIBUTES a claim is not making it. Reported
+    # from PR review: these all matched the evidence pattern before the guard
+    # learned n't contractions and reporting verbs.
+    for text in (
+        "I don't think the build is green yet.",
+        "I can't confirm the tests pass.",
+        "The contributor says the tests pass.",
+        "He said the migration is complete.",
+        "According to the logs the tests pass.",
+        "I cannot verify the tests pass.",
+    ):
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out["continue"] is True, text
+
+
+def test_evidence_word_must_end_its_clause(tmp_path):
+    # "passes" with a direct object is transitive prose, not a result claim.
+    for text in (
+        "The pipeline passes messages downstream.",
+        "The check passes the token to the handler.",
+        "The build passes environment variables through.",
+    ):
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out["continue"] is True, text
+
+
+def test_quoted_claim_is_mentioned_not_made(tmp_path):
+    # Quoting a claim as an EXAMPLE of a claim must not trip the gate. No
+    # dedicated quote guard does this: the opening quote defeats the
+    # sentence-start anchor, the closing quote fails the evidence pattern's
+    # terminal lookahead, and EXEMPT_CONTEXT covers the quoted "is complete"
+    # form. Pinned because that is three mechanisms holding one property up
+    # by coincidence — if any of them moves, this is where it shows.
+    quoted = (
+        'The phrase "the tests pass" is the new pattern.',
+        'I added "the migration is complete" to the fixture.',
+        '"Task complete!" is what it printed.',
+        'The string "Done." appears in the log.',
+        '"Shipped the fix." is the example in the README.',
+    )
+    for text in quoted:
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out["continue"] is True, text
+    unquoted = 'He said "hello" to the user. The migration is complete.'
+    out = _run({"transcript_path": _transcript(tmp_path, unquoted)},
+               {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+    assert out.get("decision") == "block", unquoted
+
+
+def test_live_only_counts_when_it_ends_the_clause(tmp_path):
+    # "live" is a closure verb only in "the change is live [now]". Attributive
+    # and compound uses are ordinary English.
+    for text in (
+        "This is live data.",
+        "This change is live-streaming to viewers.",
+        "The dashboard is live-updating every second.",
+        "This is live traffic from production.",
+    ):
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out["continue"] is True, text
+    for text in ("The change is live.", "The change is live now.", "the change is live"):
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out.get("decision") == "block", text
+
+
+def test_precision_fixes_did_not_cost_recall(tmp_path):
+    # The tightening above must not eat ordinary result claims: "pass" followed
+    # by an adverb or preposition is still a claim, so is a bare "is passing".
+    for text in (
+        "All tests pass on Python 3.12.",
+        "The tests pass cleanly now.",
+        "The build is passing.",
+        "The tests pass and I pushed the branch.",
+    ):
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out.get("decision") == "block", text
 
 
 @pytest.mark.xfail(strict=True, reason="known miss: 'confirmed' is too false-positive-prone to add blind")

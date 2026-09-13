@@ -12,6 +12,12 @@ of the doctrine in [`docs/THE_OPERATORS_CODE.md`](docs/THE_OPERATORS_CODE.md).
   (`the tests pass`, `CI is green`) and subject-noun closures (`Task complete!`). A
   clause-scoped guard keeps conditionals (`If the tests pass, …`) exempt. The 13-example
   set from the issue plus a benign set are checked in as regression tests.
+- **claim-check:** precision pass over those new patterns. A clause that negates
+  (`I can't confirm the tests pass`), attributes (`the contributor says the tests pass`)
+  or hedges a claim no longer fires; `passes` with an object (`the pipeline passes
+  messages downstream`) and attributive `live` (`live data`, `live-streaming`) no longer
+  fire; em and en dashes now count as clause boundaries, so `I hope this helps — the fix
+  is complete.` fires again.
 
 ## v0.1.0 — Initial public release
 
