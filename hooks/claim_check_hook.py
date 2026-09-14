@@ -173,24 +173,57 @@ EXEMPT_CONTEXT = (
     re.compile(r"\bwould\s+(?:be|claim|say)\s+(?:is|are)\s+", re.IGNORECASE),
 )
 
-# A claim is only a claim when the clause ASSERTS it. Four ways a clause fails
-# to: it is conditional ("If the tests pass, we ship Friday."), hoped-for
-# ("I hope the migration is complete"), negated ("Not all tests pass yet.",
-# "I can't confirm the tests pass.") or attributed to someone else ("The
-# contributor says the tests pass."). Any n't contraction counts as negation.
-NON_ASSERTION_LEAD_IN = re.compile(
-    r"(?:\b(?:if|once|when|whenever|unless|until|after|before|assuming|provided|"
-    r"whether|should|would|might|may|must|not|no|never|nor|cannot|hope|hoping|"
+# A claim is only a claim when the clause ASSERTS it. Three ways a clause
+# fails to, and they do NOT have the same reach, so they are three patterns
+# rather than one list.
+#
+# CONDITIONAL reaches across the whole clause and distributes over coordinated
+# ones: in "If the tests pass and the build is green, we ship", the "If"
+# governs both halves.
+CONDITIONAL_LEAD_IN = re.compile(
+    r"\b(?:if|once|when|whenever|unless|until|after|before|assuming|provided|"
+    r"whether|should|would|might|may|must|hope|hoping|"
     r"expect(?:ed|ing)?|ensure|ensuring|make\s+sure|so\s+that|"
-    r"says?|said|claims?|claimed|reports?|reported|told|according\s+to|"
-    r"to\s+(?:see|check|confirm|verify|make|get|ensure))\b"
-    r"|\w+n[\u2019']t\b)",
+    r"to\s+(?:see|check|confirm|verify|make|get|ensure))\b",
     re.IGNORECASE,
 )
+# A conditional interrupted by a parenthetical still governs what follows it:
+# the comma in "If, after retries, the tests pass" is punctuation inside the
+# conditional, not the start of a new assertion.
+PARENTHETICAL_CONDITIONAL = re.compile(
+    r"(?:if|once|when|whenever|unless|until|assuming|provided|should|whether)\s*,",
+    re.IGNORECASE,
+)
+# NEGATION binds its own verb phrase only. "I did not change the API and the
+# migration is complete." negates the API change, not the migration — so a
+# coordinating conjunction ends its reach, which is why COORDINATORS exists.
+NEGATION = re.compile(r"(?:\b(?:not|no|never|nor|cannot)\b|\w+n[\u2019']t\b)", re.IGNORECASE)
+# ATTRIBUTION hands the claim to someone else and has the same narrow reach.
+# The lookahead keeps the SUBJECT nouns out: "The report is complete." and
+# "The claims are verified." are claims about a report and some claims, not
+# reports and claims about something.
+ATTRIBUTION = re.compile(
+    r"\b(?:according\s+to"
+    r"|(?:says?|said|claims?|claimed|reports?|reported|tells?|told)"
+    r"(?!\s+(?:is|are|was|were|has|have|had|will|would)\b))\b",
+    re.IGNORECASE,
+)
+# …except when the source cited is a TOOL the assistant ran. "According to
+# pytest the tests pass" is the assistant's own evidence wearing a citation;
+# "The contributor says the tests pass" is genuinely someone else's claim.
+# Only the second is exempt — the gate exists to make the first one logged.
+TOOL_SOURCES = re.compile(
+    r"\b(?:pytest|tox|mypy|ruff|eslint|npm|yarn|cargo|make|curl|"
+    r"ci|test\s+runner|runner|test\s+run|build|pipeline|suite|workflow|job|"
+    r"logs?|output|coverage|linter?|typecheck(?:er)?|terminal|console)\b",
+    re.IGNORECASE,
+)
+COORDINATORS = re.compile(r"\b(?:and|but|so|yet|then|however|although|though)\b", re.IGNORECASE)
 # Clause boundaries. Em and en dashes divide clauses as firmly as a comma does
 # — without them "I hope this helps — the fix is complete." reads as one
 # hoped-for clause and a real claim gets suppressed.
-CLAUSE_BOUNDARIES = ".!?;:,\n\u2014\u2013"
+STRONG_BOUNDARIES = ".!?;\n\u2014\u2013"
+CLAUSE_BOUNDARIES = STRONG_BOUNDARIES + ":,"
 
 
 # ---------- EMIT HELPERS ----------
@@ -296,12 +329,42 @@ def _ends_in_question(text, m_end):
     return False
 
 
+def _boundary_start(text, m_start, boundaries):
+    return max(text.rfind(c, 0, m_start) for c in boundaries) + 1
+
+
+def _is_attributed(text, span_start, m_start):
+    """Whether a reporting verb governs the match. Matched against the FULL
+    text from span_start rather than the truncated span, because ATTRIBUTION's
+    lookahead needs the verb that follows the candidate word: "report" in
+    "The report is complete." is only provably a subject noun by the "is"
+    sitting after the match start."""
+    for m in ATTRIBUTION.finditer(text, span_start):
+        if m.start() >= m_start:
+            return False
+        return True
+    return False
+
+
 def _is_non_assertive_clause(text, m_start):
     """True if the clause holding the match hedges, negates, or attributes it.
-    Only that clause is inspected — back to the last boundary character — so
-    "After adding the retry, the tests pass." still fires on its own clause."""
-    clause_start = max(text.rfind(c, 0, m_start) for c in CLAUSE_BOUNDARIES) + 1
-    return bool(NON_ASSERTION_LEAD_IN.search(text[clause_start:m_start]))
+
+    Hedges reach across the whole clause; negation and attribution stop at a
+    coordinating conjunction, because that starts a new assertion. So
+    "If the tests pass and the build is green, we ship" stays exempt while
+    "I did not change the API and the migration is complete" fires."""
+    clause_start = _boundary_start(text, m_start, CLAUSE_BOUNDARIES)
+    if CONDITIONAL_LEAD_IN.search(text[clause_start:m_start]):
+        return True
+    sentence_start = _boundary_start(text, m_start, STRONG_BOUNDARIES)
+    if PARENTHETICAL_CONDITIONAL.match(text[sentence_start:m_start].lstrip()):
+        return True
+    coordinators = list(COORDINATORS.finditer(text[clause_start:m_start]))
+    span_start = clause_start + (coordinators[-1].end() if coordinators else 0)
+    span = text[span_start:m_start]
+    if NEGATION.search(span):
+        return True
+    return _is_attributed(text, span_start, m_start) and not TOOL_SOURCES.search(span)
 
 
 def find_claims(text):

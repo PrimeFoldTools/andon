@@ -262,12 +262,99 @@ def test_negated_and_attributed_claims_do_not_fire(tmp_path):
         "I can't confirm the tests pass.",
         "The contributor says the tests pass.",
         "He said the migration is complete.",
-        "According to the logs the tests pass.",
+        "According to the maintainer the fix is in place.",
+        "The reviewer claims the migration is done.",
         "I cannot verify the tests pass.",
     ):
         out = _run({"transcript_path": _transcript(tmp_path, text)},
                    {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
         assert out["continue"] is True, text
+
+
+def test_reporting_words_as_subject_nouns_still_fire(tmp_path):
+    # PR review: "report" and "claims" are reporting VERBS in "the log reports
+    # X" but SUBJECT NOUNS here, and the sentences are ordinary done-claims.
+    # What proves the difference is the verb AFTER them, which sits past the
+    # match start — so the attribution scan has to see beyond it.
+    for text in (
+        "The report is complete.",
+        "The claims are verified.",
+        "The report is ready.",
+        "Those claims are resolved.",
+    ):
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out.get("decision") == "block", text
+
+
+def test_negation_stops_at_a_coordinator(tmp_path):
+    # PR review: negation binds its own verb phrase. An earlier negative clause
+    # must not launder a later, unrelated affirmative claim.
+    for text in (
+        "I did not change the API and the migration is complete.",
+        "No surprises and the fix is complete.",
+        "I haven't touched the parser but the tests pass.",
+        "Nothing else changed so the migration is done.",
+    ):
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out.get("decision") == "block", text
+
+
+def test_conditional_still_reaches_across_a_coordinator(tmp_path):
+    # The mirror of the test above, and the reason negation and hedging are
+    # separate patterns: a conditional DOES distribute over coordinated
+    # clauses, so narrowing negation must not narrow this too.
+    for text in (
+        "If the tests pass and the build is green, we ship.",
+        "Once the migration is done and the fix is complete, deploy.",
+        "Unless the tests pass and CI is green, hold the release.",
+    ):
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out["continue"] is True, text
+
+
+def test_attribution_to_a_tool_is_the_assistants_own_claim(tmp_path):
+    # PR review judgment call: citing a tool the assistant ran is its own
+    # evidence claim wearing a citation, and is exactly what the gate exists
+    # to make it log. Quoting a PERSON is genuinely someone else's claim.
+    for text in (
+        "According to pytest the tests pass.",
+        "The test runner reports all tests pass.",
+        "The logs say the tests pass.",
+        "CI reports the build is green.",
+    ):
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out.get("decision") == "block", text
+    for text in (
+        "The contributor says the tests pass.",
+        "According to the maintainer the fix is in place.",
+        "The reviewer claims the migration is done.",
+    ):
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out["continue"] is True, text
+
+
+def test_conditional_survives_an_interior_parenthetical(tmp_path):
+    # PR review: "If, after retries, the tests pass" is hypothetical. The comma
+    # after "If" is punctuation inside the conditional, not a new assertion —
+    # but "After adding the retry logic, the tests pass." IS one, so the guard
+    # keys on the conditional being immediately followed by the comma.
+    for text in (
+        "If, after retries, the tests pass, we can merge.",
+        "Unless, for some reason, the build is green, hold off.",
+        "Once, and only once, the migration is complete, cut the release.",
+    ):
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out["continue"] is True, text
+    for text in ("After adding the retry logic, the tests pass.",):
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out.get("decision") == "block", text
 
 
 def test_evidence_word_must_end_its_clause(tmp_path):

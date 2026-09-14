@@ -18,6 +18,14 @@ of the doctrine in [`docs/THE_OPERATORS_CODE.md`](docs/THE_OPERATORS_CODE.md).
   messages downstream`) and attributive `live` (`live data`, `live-streaming`) no longer
   fire; em and en dashes now count as clause boundaries, so `I hope this helps — the fix
   is complete.` fires again.
+- **claim-check:** the assertion guard is now three patterns rather than one list,
+  because hedging, negation and attribution do not have the same reach. A conditional
+  distributes over coordinated clauses (`If the tests pass and the build is green, …`)
+  and survives an interior parenthetical (`If, after retries, the tests pass, …`);
+  negation stops at a coordinator, so `I did not change the API and the migration is
+  complete.` fires. Attribution no longer swallows subject nouns (`The report is
+  complete.`), and citing a tool the assistant ran (`According to pytest the tests
+  pass.`) now counts as its own evidence claim while quoting a person stays exempt.
 
 ## v0.1.0 — Initial public release
 
