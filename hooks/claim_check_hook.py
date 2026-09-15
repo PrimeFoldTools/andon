@@ -189,11 +189,17 @@ CONDITIONAL_LEAD_IN = re.compile(
 )
 # A conditional interrupted by a parenthetical still governs what follows it:
 # the comma in "If, after retries, the tests pass" is punctuation inside the
-# conditional, not the start of a new assertion.
+# conditional, not the start of a new assertion. Its reach ends with the
+# protasis though — the consequent is asserted, so in "If, after retries, you
+# still see errors, the fix is complete anyway." the fix claim is a real one.
+# PARENTHETICAL_SEGMENTS is how far that reach goes, counted in commas:
+# "If" | the parenthetical | the protasis. Anything past that is the
+# consequent and is on its own.
 PARENTHETICAL_CONDITIONAL = re.compile(
     r"(?:if|once|when|whenever|unless|until|assuming|provided|should|whether)\s*,",
     re.IGNORECASE,
 )
+PARENTHETICAL_SEGMENTS = 2
 # NEGATION binds its own verb phrase only. "I did not change the API and the
 # migration is complete." negates the API change, not the migration — so a
 # coordinating conjunction ends its reach, which is why COORDINATORS exists.
@@ -212,6 +218,9 @@ ATTRIBUTION = re.compile(
 # pytest the tests pass" is the assistant's own evidence wearing a citation;
 # "The contributor says the tests pass" is genuinely someone else's claim.
 # Only the second is exempt — the gate exists to make the first one logged.
+# Which source counts is the OUTERMOST one: in "The contributor says pytest
+# reports the tests pass" the whole thing is still the contributor's claim,
+# and the assistant ran nothing.
 TOOL_SOURCES = re.compile(
     r"\b(?:pytest|tox|mypy|ruff|eslint|npm|yarn|cargo|make|curl|"
     r"ci|test\s+runner|runner|test\s+run|build|pipeline|suite|workflow|job|"
@@ -333,17 +342,27 @@ def _boundary_start(text, m_start, boundaries):
     return max(text.rfind(c, 0, m_start) for c in boundaries) + 1
 
 
-def _is_attributed(text, span_start, m_start):
-    """Whether a reporting verb governs the match. Matched against the FULL
-    text from span_start rather than the truncated span, because ATTRIBUTION's
-    lookahead needs the verb that follows the candidate word: "report" in
-    "The report is complete." is only provably a subject noun by the "is"
-    sitting after the match start."""
+def _first_attribution(text, span_start, m_start):
+    """The outermost reporting verb governing the match, or None. Matched
+    against the FULL text from span_start rather than the truncated span,
+    because ATTRIBUTION's lookahead needs the verb that FOLLOWS the candidate
+    word: "report" in "The report is complete." is only provably a subject
+    noun by the "is" sitting after the match start."""
     for m in ATTRIBUTION.finditer(text, span_start):
-        if m.start() >= m_start:
-            return False
-        return True
-    return False
+        return m if m.start() < m_start else None
+    return None
+
+
+def _cites_a_tool(text, span_start, m):
+    """Whether the source named by attribution `m` is a tool the assistant
+    ran. "According to pytest" names it after the phrase; "CI reports" names
+    it before the verb. Only the OUTERMOST attribution is consulted, so a
+    tool quoted inside a person's claim stays the person's claim."""
+    if m.group(0).lower().startswith("according"):
+        window = text[m.end():m.end() + 40]
+    else:
+        window = text[span_start:m.start()]
+    return bool(TOOL_SOURCES.search(window))
 
 
 def _is_non_assertive_clause(text, m_start):
@@ -357,14 +376,17 @@ def _is_non_assertive_clause(text, m_start):
     if CONDITIONAL_LEAD_IN.search(text[clause_start:m_start]):
         return True
     sentence_start = _boundary_start(text, m_start, STRONG_BOUNDARIES)
-    if PARENTHETICAL_CONDITIONAL.match(text[sentence_start:m_start].lstrip()):
+    sentence = text[sentence_start:m_start]
+    if (PARENTHETICAL_CONDITIONAL.match(sentence.lstrip())
+            and sentence.count(",") <= PARENTHETICAL_SEGMENTS):
         return True
     coordinators = list(COORDINATORS.finditer(text[clause_start:m_start]))
     span_start = clause_start + (coordinators[-1].end() if coordinators else 0)
     span = text[span_start:m_start]
     if NEGATION.search(span):
         return True
-    return _is_attributed(text, span_start, m_start) and not TOOL_SOURCES.search(span)
+    attribution = _first_attribution(text, span_start, m_start)
+    return attribution is not None and not _cites_a_tool(text, span_start, attribution)
 
 
 def find_claims(text):

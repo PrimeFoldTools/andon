@@ -357,6 +357,69 @@ def test_conditional_survives_an_interior_parenthetical(tmp_path):
         assert out.get("decision") == "block", text
 
 
+def test_conditional_reach_ends_with_its_protasis(tmp_path):
+    # PR review: an opening conditional governs the condition, not the
+    # consequent. "If, after retries, you still see errors, THE FIX IS
+    # COMPLETE anyway." asserts the fix. The two are told apart by how many
+    # comma segments deep the claim sits: "If" | parenthetical | protasis.
+    asserted = (
+        "If, after retries, you still see errors, the fix is complete anyway.",
+        "If, for what it is worth, you disagree, the migration is done.",
+    )
+    for text in asserted:
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out.get("decision") == "block", text
+    hypothetical = (
+        "If, after retries, the tests pass, we can merge.",
+        "Unless, for some reason, the build is green, hold off.",
+        "Once, and only once, the migration is complete, cut the release.",
+    )
+    for text in hypothetical:
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out["continue"] is True, text
+
+
+def test_nested_attribution_belongs_to_the_outer_source(tmp_path):
+    # PR review: "The contributor says pytest reports the tests pass." is the
+    # contributor's claim. The assistant ran nothing, so the pytest mention
+    # inside it must not turn the sentence into the assistant's own evidence.
+    # Only the OUTERMOST reporting verb decides whose claim it is.
+    for text in (
+        "The contributor says pytest reports the tests pass.",
+        "The maintainer said CI reports the build is green.",
+        "He claims the test runner reports the tests pass.",
+    ):
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out["continue"] is True, text
+    # …and the tool being the outer source still fires.
+    for text in ("According to pytest the tests pass.", "CI reports the build is green."):
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out.get("decision") == "block", text
+
+
+def test_attribution_survives_a_tool_word_in_the_claim(tmp_path):
+    # Consequence of the rule above, pinned because it CHANGED: the tool word
+    # sits in the claim rather than in the source, so the sentence stays the
+    # contributor's. Previously the bare presence of "pipeline" anywhere in
+    # the clause flipped it to the assistant's own claim. This is the same
+    # principle as the test above, not a special case — but it is a recall
+    # loss against an unattributed reading, so it is spelled out rather than
+    # left to be discovered.
+    out = _run({"transcript_path": _transcript(tmp_path, "The contributor says the pipeline is complete.")},
+               {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+    assert out["continue"] is True
+    # Known limitation, left deliberately: attribution does not survive a
+    # coordinator, so the second half reads as the assistant's own claim.
+    out = _run({"transcript_path": _transcript(
+                    tmp_path, "The contributor says the fix is complete and the migration is done.")},
+               {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+    assert out.get("decision") == "block"
+
+
 def test_evidence_word_must_end_its_clause(tmp_path):
     # "passes" with a direct object is transitive prose, not a result claim.
     for text in (

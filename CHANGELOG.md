@@ -26,6 +26,11 @@ of the doctrine in [`docs/THE_OPERATORS_CODE.md`](docs/THE_OPERATORS_CODE.md).
   complete.` fires. Attribution no longer swallows subject nouns (`The report is
   complete.`), and citing a tool the assistant ran (`According to pytest the tests
   pass.`) now counts as its own evidence claim while quoting a person stays exempt.
+- **claim-check:** two scope corrections to those exemptions. An opening conditional
+  reaches only as far as its condition, so `If, after retries, you still see errors, the
+  fix is complete anyway.` fires on the consequent. Whose claim it is now follows the
+  outermost reporting verb, so `The contributor says pytest reports the tests pass.` is
+  still the contributor's claim and stays exempt.
 
 ## v0.1.0 — Initial public release
 
