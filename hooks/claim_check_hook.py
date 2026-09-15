@@ -32,6 +32,8 @@ The two are NOT interchangeable — using the wrong one is a silent no-op.
 CUSTOMIZE
   - COMPLETION_VERBS — closure verbs that trigger the check (kept tight to avoid false-fires).
   - OPT_IN_VERBS — looser verbs; enable only if your domain needs them.
+  - EVIDENCE_NOUNS — the things whose "pass / green" is itself a done-claim (tests, CI, build).
+  - CLOSURE_NOUNS — subjects for the bare "Task complete!" / "Migration done." form.
   - CLAIM_CHECK_FRESH_MIN — "fresh" window (15 is forgiving; don't go below ~5).
   - CLAIM_CHECKS_LOG_PATH env var — override the log location.
 """
@@ -58,18 +60,52 @@ DEFAULT_MODE = "warn"           # warn | block | off  (start warn; promote to bl
 # Unambiguous closure verbs — kept tight so everyday prose ("the data is current",
 # "are we done here?") does NOT false-fire.
 COMPLETION_VERBS = (
-    "ready", "shipped", "complete", "completed", "done",
+    "ready", "shipped", "complete", "completed", "done", "finished",
     "verified", "fixed", "resolved", "production[\\s-]ready",
+    # State-of-the-thing closures: "the fix is in place", "everything is now
+    # wired up". Bare "wired" is NOT included — "the button is wired to the
+    # handler" is description, not closure. "live" is below, it needs a guard.
+    "in[\\s-]place", "wired[\\s-]up",
+)
+# "live" is a closure only when it ENDS the clause: "the change is live",
+# "the change is live now". Attributive and compound uses are ordinary English
+# — "this is live data", "is live-streaming to viewers" — so it carries its own
+# terminal guard instead of sitting in the list above.
+LIVE_VERB = (
+    r"live(?![-\u2010-\u2015\w])"
+    r"(?=\s*(?:[.,;:!?)\]]|$|\b(?:now|again|already|and|on|in|for)\b))"
 )
 # Looser verbs — higher false-positive rate in normal English. Add deliberately if your
-# domain needs them: "live", "functional", "applied", "patched", "synced",
-# "current", "in[\\s-]sync", "wired".
+# domain needs them: "functional", "applied", "patched", "synced", "current",
+# "in[\\s-]sync". NOT "working" — "I'm now working on the tests" would fire.
 OPT_IN_VERBS = ()
 COMPLETION_VERBS = COMPLETION_VERBS + OPT_IN_VERBS
 
+# Evidence-claims: asserting a RESULT ("the tests pass", "CI is green") is the
+# claim most in need of a verification record behind it — it is the one that
+# sounds like evidence. Kept to nouns that name a check, so "the light is green"
+# and "the function is passing None" do not fire.
+EVIDENCE_NOUNS = (
+    "tests?", "specs?", "ci", "builds?", "pipelines?", "checks?", "suite",
+    "lints?", "linters?", "typechecks?",
+)
+# Subject-noun closures: "Task complete!", "Migration done." — a small noun list
+# plus a closure verb, anchored to sentence start, so it stays narrow.
+CLOSURE_NOUNS = (
+    "task", "work", "job", "migration", "change", "fix", "deploy", "deployment",
+    "refactor", "build", "patch", "update", "release", "rollout", "feature",
+    "implementation", "cleanup", "ticket", "pr", "merge",
+)
+
 
 # ---------- PATTERNS ----------
-_VERBS = "|".join(COMPLETION_VERBS)
+_VERBS = "|".join(COMPLETION_VERBS + (LIVE_VERB,))
+_EVIDENCE = "|".join(EVIDENCE_NOUNS)
+_CLOSURE_NOUNS = "|".join(CLOSURE_NOUNS)
+# Optional first-person lead-in for the sentence-start forms. Agents write
+# "I've implemented the migration." far more often than "Implemented the
+# migration." — without this the leading subject defeated both anchors.
+_SUBJECT = r"(?:(?:i|we)(?:'ve|\s+have|\s+just|\s+have\s+just)?\s+)?"
 
 CLAIM_PATTERNS = (
     # Standalone / sentence-start closure markers:
@@ -77,24 +113,53 @@ CLAIM_PATTERNS = (
     re.compile(
         rf"(?im)(?:^|(?<=[.!?])\s+|\n)\s*"
         rf"(?:done|complete|completed|ready|verified|fixed|resolved|shipped|"
-        rf"production[\s-]ready|all\s+set)\b"
+        rf"implemented|finished|production[\s-]ready|all\s+set)\b"
+        rf"(?:\s*(?:[.!:;]|—|-)|\s*$)"
+    ),
+    # Subject-noun closure: "Task complete!", "Migration done." — bare noun +
+    # closure verb with no copula. ("The fix is done." is the auxiliary
+    # pattern below, not this one.)
+    re.compile(
+        rf"(?im)(?:^|(?<=[.!?])\s+|\n)\s*"
+        rf"(?:(?:the|this|that)\s+)?(?:{_CLOSURE_NOUNS})\s+"
+        rf"(?:done|complete|completed|finished|shipped|deployed|merged|applied|verified)\b"
         rf"(?:\s*(?:[.!:;]|—|-)|\s*$)"
     ),
     # Leading action-claim forms — REQUIRE a determiner after the verb so that
     # ordinary participle-adjective prose ("Fixed income securities…",
     # "Shipped goods arrived…", "Verified users get a badge…") does NOT
     # false-fire. Only "Shipped the fix.", "Fixed the tests.",
-    # "Implemented the migration." (verb + determiner + object) trigger.
+    # "Implemented the migration." (verb + determiner + object) trigger — with or
+    # without a first-person lead-in ("I've implemented the migration.",
+    # "We have fixed the tests.", "I finished the migration."). The determiner
+    # requirement is what keeps "We have verified users in the table" exempt.
     re.compile(
-        r"(?im)(?:^|(?<=[.!?])\s+|\n)\s*"
-        r"(?:shipped|fixed|verified|resolved|completed|implemented)\s+"
-        r"(?:the|this|that|these|those|all|our|your|its|my)\b[^\n.!?]{0,80}"
+        rf"(?im)(?:^|(?<=[.!?])\s+|\n)\s*{_SUBJECT}"
+        rf"(?:shipped|fixed|verified|resolved|completed|implemented|finished)\s+"
+        rf"(?:the|this|that|these|those|all|our|your|its|my)\b[^\n.!?]{{0,80}}"
     ),
     # "X is/are [already/now/fully] $VERB"
     re.compile(
         rf"\b(?:is|are|has\s+been|have\s+been|now|finally|fully|officially|already)"
         rf"(?:\s+(?:already|just|now|fully))?"
         rf"\s+(?:{_VERBS})\b",
+        re.IGNORECASE,
+    ),
+    # Evidence-claims: "the tests pass", "all 3 tests pass", "CI is green again",
+    # "the build is passing". Three things keep this narrow:
+    #   - the noun must be a check (EVIDENCE_NOUNS), so "the light is green" is out;
+    #   - only a short list of linking words may sit between the noun and the
+    #     result word, so "the tests should pass" / "will pass" / "don't pass" is out;
+    #   - the result word must END its clause, so a transitive use with an object
+    #     — "the pipeline passes messages downstream" — is out.
+    # Lead-ins that make the sentence non-assertive ("If the tests pass, …",
+    # "I can't confirm the tests pass") are handled by _is_non_assertive_clause().
+    re.compile(
+        rf"\b(?:{_EVIDENCE})\b"
+        rf"(?:\s+(?:are|is|all|now|again|still|both))*"
+        rf"\s+(?:pass(?:es|ed|ing)?|green)\b"
+        rf"(?=\s*(?:[.,;:!?)\]\u2014\u2013]|$"
+        rf"|\b(?:now|again|still|cleanly|locally|too|both|and|on|in|for|under|after)\b))",
         re.IGNORECASE,
     ),
     # Bolded markers
@@ -107,6 +172,67 @@ EXEMPT_CONTEXT = (
     re.compile(r'["“]\s*[^"”]{0,80}\bis\s+(?:done|ready|complete)\b[^"”]{0,80}\s*["”]'),
     re.compile(r"\bwould\s+(?:be|claim|say)\s+(?:is|are)\s+", re.IGNORECASE),
 )
+
+# A claim is only a claim when the clause ASSERTS it. Three ways a clause
+# fails to, and they do NOT have the same reach, so they are three patterns
+# rather than one list.
+#
+# CONDITIONAL reaches across the whole clause and distributes over coordinated
+# ones: in "If the tests pass and the build is green, we ship", the "If"
+# governs both halves.
+CONDITIONAL_LEAD_IN = re.compile(
+    r"\b(?:if|once|when|whenever|unless|until|after|before|assuming|provided|"
+    r"whether|should|would|might|may|must|hope|hoping|"
+    r"expect(?:ed|ing)?|ensure|ensuring|make\s+sure|so\s+that|"
+    r"to\s+(?:see|check|confirm|verify|make|get|ensure))\b",
+    re.IGNORECASE,
+)
+# A conditional interrupted by a parenthetical still governs what follows it:
+# the comma in "If, after retries, the tests pass" is punctuation inside the
+# conditional, not the start of a new assertion. Its reach ends with the
+# protasis though — the consequent is asserted, so in "If, after retries, you
+# still see errors, the fix is complete anyway." the fix claim is a real one.
+# PARENTHETICAL_SEGMENTS is how far that reach goes, counted in commas:
+# "If" | the parenthetical | the protasis. Anything past that is the
+# consequent and is on its own.
+PARENTHETICAL_CONDITIONAL = re.compile(
+    r"(?:if|once|when|whenever|unless|until|assuming|provided|should|whether)\s*,",
+    re.IGNORECASE,
+)
+PARENTHETICAL_SEGMENTS = 2
+# NEGATION binds its own verb phrase only. "I did not change the API and the
+# migration is complete." negates the API change, not the migration — so a
+# coordinating conjunction ends its reach, which is why COORDINATORS exists.
+NEGATION = re.compile(r"(?:\b(?:not|no|never|nor|cannot)\b|\w+n[\u2019']t\b)", re.IGNORECASE)
+# ATTRIBUTION hands the claim to someone else and has the same narrow reach.
+# The lookahead keeps the SUBJECT nouns out: "The report is complete." and
+# "The claims are verified." are claims about a report and some claims, not
+# reports and claims about something.
+ATTRIBUTION = re.compile(
+    r"\b(?:according\s+to"
+    r"|(?:says?|said|claims?|claimed|reports?|reported|tells?|told)"
+    r"(?!\s+(?:is|are|was|were|has|have|had|will|would)\b))\b",
+    re.IGNORECASE,
+)
+# …except when the source cited is a TOOL the assistant ran. "According to
+# pytest the tests pass" is the assistant's own evidence wearing a citation;
+# "The contributor says the tests pass" is genuinely someone else's claim.
+# Only the second is exempt — the gate exists to make the first one logged.
+# Which source counts is the OUTERMOST one: in "The contributor says pytest
+# reports the tests pass" the whole thing is still the contributor's claim,
+# and the assistant ran nothing.
+TOOL_SOURCES = re.compile(
+    r"\b(?:pytest|tox|mypy|ruff|eslint|npm|yarn|cargo|make|curl|"
+    r"ci|test\s+runner|runner|test\s+run|build|pipeline|suite|workflow|job|"
+    r"logs?|output|coverage|linter?|typecheck(?:er)?|terminal|console)\b",
+    re.IGNORECASE,
+)
+COORDINATORS = re.compile(r"\b(?:and|but|so|yet|then|however|although|though)\b", re.IGNORECASE)
+# Clause boundaries. Em and en dashes divide clauses as firmly as a comma does
+# — without them "I hope this helps — the fix is complete." reads as one
+# hoped-for clause and a real claim gets suppressed.
+STRONG_BOUNDARIES = ".!?;\n\u2014\u2013"
+CLAUSE_BOUNDARIES = STRONG_BOUNDARIES + ":,"
 
 
 # ---------- EMIT HELPERS ----------
@@ -212,6 +338,57 @@ def _ends_in_question(text, m_end):
     return False
 
 
+def _boundary_start(text, m_start, boundaries):
+    return max(text.rfind(c, 0, m_start) for c in boundaries) + 1
+
+
+def _first_attribution(text, span_start, m_start):
+    """The outermost reporting verb governing the match, or None. Matched
+    against the FULL text from span_start rather than the truncated span,
+    because ATTRIBUTION's lookahead needs the verb that FOLLOWS the candidate
+    word: "report" in "The report is complete." is only provably a subject
+    noun by the "is" sitting after the match start."""
+    for m in ATTRIBUTION.finditer(text, span_start):
+        return m if m.start() < m_start else None
+    return None
+
+
+def _cites_a_tool(text, span_start, m):
+    """Whether the source named by attribution `m` is a tool the assistant
+    ran. "According to pytest" names it after the phrase; "CI reports" names
+    it before the verb. Only the OUTERMOST attribution is consulted, so a
+    tool quoted inside a person's claim stays the person's claim."""
+    if m.group(0).lower().startswith("according"):
+        window = text[m.end():m.end() + 40]
+    else:
+        window = text[span_start:m.start()]
+    return bool(TOOL_SOURCES.search(window))
+
+
+def _is_non_assertive_clause(text, m_start):
+    """True if the clause holding the match hedges, negates, or attributes it.
+
+    Hedges reach across the whole clause; negation and attribution stop at a
+    coordinating conjunction, because that starts a new assertion. So
+    "If the tests pass and the build is green, we ship" stays exempt while
+    "I did not change the API and the migration is complete" fires."""
+    clause_start = _boundary_start(text, m_start, CLAUSE_BOUNDARIES)
+    if CONDITIONAL_LEAD_IN.search(text[clause_start:m_start]):
+        return True
+    sentence_start = _boundary_start(text, m_start, STRONG_BOUNDARIES)
+    sentence = text[sentence_start:m_start]
+    if (PARENTHETICAL_CONDITIONAL.match(sentence.lstrip())
+            and sentence.count(",") <= PARENTHETICAL_SEGMENTS):
+        return True
+    coordinators = list(COORDINATORS.finditer(text[clause_start:m_start]))
+    span_start = clause_start + (coordinators[-1].end() if coordinators else 0)
+    span = text[span_start:m_start]
+    if NEGATION.search(span):
+        return True
+    attribution = _first_attribution(text, span_start, m_start)
+    return attribution is not None and not _cites_a_tool(text, span_start, attribution)
+
+
 def find_claims(text):
     matches = []
     seen = set()
@@ -222,6 +399,8 @@ def find_claims(text):
             if key in seen:
                 continue
             if _ends_in_question(text, m.end()):
+                continue
+            if _is_non_assertive_clause(text, m.start()):
                 continue
             if _is_backtick_wrapped(text, m.start(), m.end()):
                 continue
