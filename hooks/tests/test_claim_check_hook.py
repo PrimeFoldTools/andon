@@ -12,8 +12,6 @@ import json
 import os
 import subprocess
 import sys
-
-import pytest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -136,368 +134,6 @@ def test_benign_participle_openers_do_not_fire(tmp_path):
         assert out["continue"] is True, text
 
 
-# ---- recall fixture (issue #3): realistic turn-endings that MUST fire ----
-# Before this fixture existed, 9 of these 13 were missed: the sentence-start
-# patterns anchored to ^ so any leading subject defeated them, "implemented" was
-# missing from the standalone list, and there was no pattern for evidence-claims
-# ("the tests pass", "CI is green") or subject-noun closures ("Task complete!").
-# Each line here is a real claim shape an agent produces; if one stops firing,
-# recall regressed silently and this is what makes it loud.
-REALISTIC_DONE_CLAIMS = (
-    "Task complete!",
-    "I've implemented the retry logic in fetch_page.",
-    "I finished the migration and pushed to main.",
-    "the change is live",
-    "The fix is in place.",
-    "Implemented. Let me know if you want the tests too.",
-    "I've added the retry logic and the three new tests pass.",
-    "Your CI is green again.",
-    "Everything is now wired up.",
-    "The refactor is done.",
-    "Fixed the off-by-one in the paginator.",
-    "All set — the deploy went through.",
-    "**DONE** — schema migration applied.",
-)
-
-
-def test_realistic_done_claims_fire(tmp_path):
-    for text in REALISTIC_DONE_CLAIMS:
-        out = _run({"transcript_path": _transcript(tmp_path, text)},
-                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
-        assert out.get("decision") == "block", text
-
-
-def test_first_person_lead_in_fires_only_with_determiner(tmp_path):
-    # The optional "I've / we have / I just" prefix must not loosen the
-    # determiner rule that keeps participle-adjective prose exempt.
-    fires = ("I've fixed the tests.", "We have shipped the fix.", "I just resolved this ticket.")
-    exempt = ("We have verified users in the table.", "I have finished reading the spec.",
-              "It finished the migration overnight.")
-    for text in fires:
-        out = _run({"transcript_path": _transcript(tmp_path, text)},
-                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
-        assert out.get("decision") == "block", text
-    for text in exempt:
-        out = _run({"transcript_path": _transcript(tmp_path, text)},
-                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
-        assert out["continue"] is True, text
-
-
-def test_evidence_claims_need_a_check_noun(tmp_path):
-    # "pass" / "green" are only claims when the subject is a check. Everyday
-    # uses of the same words must not fire.
-    for text in (
-        "The light is green.",
-        "The function is passing None to the callback.",
-        "The button is wired to the handler.",
-        "Live migration is supported.",
-        "The tests should pass after that.",
-        "The tests will pass once the fixture is updated.",
-        "The tests don't pass yet.",
-    ):
-        out = _run({"transcript_path": _transcript(tmp_path, text)},
-                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
-        assert out["continue"] is True, text
-
-
-def test_conditional_lead_in_does_not_fire(tmp_path):
-    # Every line here MATCHES a claim pattern ("tests pass", "build is green",
-    # "is complete") and is exempted ONLY by the non-assertive-clause guard.
-    # Deleting _is_non_assertive_clause makes all of them block, so they
-    # exercise the guard rather than pass by luck.
-    for text in (
-        "If the tests pass, we can ship on Friday.",
-        "Once the build is green, cut the release.",
-        "Unless the tests pass, don't merge.",
-        "Make sure CI is green before merging.",
-        "Run pytest to confirm the tests pass.",
-        "Not all tests pass yet.",
-        "I hope the migration is complete by Monday.",
-    ):
-        out = _run({"transcript_path": _transcript(tmp_path, text)},
-                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
-        assert out["continue"] is True, text
-
-
-def test_conditional_guard_is_clause_scoped(tmp_path):
-    # The guard inspects only the clause the match sits in. A lead-in in a
-    # DIFFERENT clause does not launder a real claim. The dash cases matter
-    # because an em/en dash divides clauses as firmly as a comma: without it in
-    # CLAUSE_BOUNDARIES the "I hope" swallows a claim main already catches.
-    for text in (
-        "After adding the retry logic, the tests pass.",
-        "The change is now live, if you want to test it.",
-        "I hope this helps — the fix is complete.",
-        "I hope this helps – the fix is complete.",
-        "If you want, I can revert — the migration is done.",
-    ):
-        out = _run({"transcript_path": _transcript(tmp_path, text)},
-                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
-        assert out.get("decision") == "block", text
-
-
-def test_benign_prose_does_not_fire(tmp_path):
-    # Sentences that share vocabulary with claims but assert nothing about the
-    # work being finished.
-    for text in (
-        "I'm now working on the tests.",
-        "Task completion is tracked in the ledger.",
-        "Fix versions are listed in the changelog.",
-        "Build artifacts go in dist/.",
-        "Change done to the schema was minimal.",
-        "Do the tests pass?",
-        "Is the change live?",
-    ):
-        out = _run({"transcript_path": _transcript(tmp_path, text)},
-                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
-        assert out["continue"] is True, text
-
-
-def test_negated_and_attributed_claims_do_not_fire(tmp_path):
-    # A clause that NEGATES or ATTRIBUTES a claim is not making it. Reported
-    # from PR review: these all matched the evidence pattern before the guard
-    # learned n't contractions and reporting verbs.
-    for text in (
-        "I don't think the build is green yet.",
-        "I can't confirm the tests pass.",
-        "The contributor says the tests pass.",
-        "He said the migration is complete.",
-        "According to the maintainer the fix is in place.",
-        "The reviewer claims the migration is done.",
-        "I cannot verify the tests pass.",
-    ):
-        out = _run({"transcript_path": _transcript(tmp_path, text)},
-                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
-        assert out["continue"] is True, text
-
-
-def test_reporting_words_as_subject_nouns_still_fire(tmp_path):
-    # PR review: "report" and "claims" are reporting VERBS in "the log reports
-    # X" but SUBJECT NOUNS here, and the sentences are ordinary done-claims.
-    # What proves the difference is the verb AFTER them, which sits past the
-    # match start — so the attribution scan has to see beyond it.
-    for text in (
-        "The report is complete.",
-        "The claims are verified.",
-        "The report is ready.",
-        "Those claims are resolved.",
-    ):
-        out = _run({"transcript_path": _transcript(tmp_path, text)},
-                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
-        assert out.get("decision") == "block", text
-
-
-def test_negation_stops_at_a_coordinator(tmp_path):
-    # PR review: negation binds its own verb phrase. An earlier negative clause
-    # must not launder a later, unrelated affirmative claim.
-    for text in (
-        "I did not change the API and the migration is complete.",
-        "No surprises and the fix is complete.",
-        "I haven't touched the parser but the tests pass.",
-        "Nothing else changed so the migration is done.",
-    ):
-        out = _run({"transcript_path": _transcript(tmp_path, text)},
-                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
-        assert out.get("decision") == "block", text
-
-
-def test_conditional_still_reaches_across_a_coordinator(tmp_path):
-    # The mirror of the test above, and the reason negation and hedging are
-    # separate patterns: a conditional DOES distribute over coordinated
-    # clauses, so narrowing negation must not narrow this too.
-    for text in (
-        "If the tests pass and the build is green, we ship.",
-        "Once the migration is done and the fix is complete, deploy.",
-        "Unless the tests pass and CI is green, hold the release.",
-    ):
-        out = _run({"transcript_path": _transcript(tmp_path, text)},
-                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
-        assert out["continue"] is True, text
-
-
-def test_attribution_to_a_tool_is_the_assistants_own_claim(tmp_path):
-    # PR review judgment call: citing a tool the assistant ran is its own
-    # evidence claim wearing a citation, and is exactly what the gate exists
-    # to make it log. Quoting a PERSON is genuinely someone else's claim.
-    for text in (
-        "According to pytest the tests pass.",
-        "The test runner reports all tests pass.",
-        "The logs say the tests pass.",
-        "CI reports the build is green.",
-    ):
-        out = _run({"transcript_path": _transcript(tmp_path, text)},
-                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
-        assert out.get("decision") == "block", text
-    for text in (
-        "The contributor says the tests pass.",
-        "According to the maintainer the fix is in place.",
-        "The reviewer claims the migration is done.",
-    ):
-        out = _run({"transcript_path": _transcript(tmp_path, text)},
-                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
-        assert out["continue"] is True, text
-
-
-def test_conditional_survives_an_interior_parenthetical(tmp_path):
-    # PR review: "If, after retries, the tests pass" is hypothetical. The comma
-    # after "If" is punctuation inside the conditional, not a new assertion —
-    # but "After adding the retry logic, the tests pass." IS one, so the guard
-    # keys on the conditional being immediately followed by the comma.
-    for text in (
-        "If, after retries, the tests pass, we can merge.",
-        "Unless, for some reason, the build is green, hold off.",
-        "Once, and only once, the migration is complete, cut the release.",
-    ):
-        out = _run({"transcript_path": _transcript(tmp_path, text)},
-                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
-        assert out["continue"] is True, text
-    for text in ("After adding the retry logic, the tests pass.",):
-        out = _run({"transcript_path": _transcript(tmp_path, text)},
-                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
-        assert out.get("decision") == "block", text
-
-
-def test_conditional_reach_ends_with_its_protasis(tmp_path):
-    # PR review: an opening conditional governs the condition, not the
-    # consequent. "If, after retries, you still see errors, THE FIX IS
-    # COMPLETE anyway." asserts the fix. The two are told apart by how many
-    # comma segments deep the claim sits: "If" | parenthetical | protasis.
-    asserted = (
-        "If, after retries, you still see errors, the fix is complete anyway.",
-        "If, for what it is worth, you disagree, the migration is done.",
-    )
-    for text in asserted:
-        out = _run({"transcript_path": _transcript(tmp_path, text)},
-                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
-        assert out.get("decision") == "block", text
-    hypothetical = (
-        "If, after retries, the tests pass, we can merge.",
-        "Unless, for some reason, the build is green, hold off.",
-        "Once, and only once, the migration is complete, cut the release.",
-    )
-    for text in hypothetical:
-        out = _run({"transcript_path": _transcript(tmp_path, text)},
-                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
-        assert out["continue"] is True, text
-
-
-def test_nested_attribution_belongs_to_the_outer_source(tmp_path):
-    # PR review: "The contributor says pytest reports the tests pass." is the
-    # contributor's claim. The assistant ran nothing, so the pytest mention
-    # inside it must not turn the sentence into the assistant's own evidence.
-    # Only the OUTERMOST reporting verb decides whose claim it is.
-    for text in (
-        "The contributor says pytest reports the tests pass.",
-        "The maintainer said CI reports the build is green.",
-        "He claims the test runner reports the tests pass.",
-    ):
-        out = _run({"transcript_path": _transcript(tmp_path, text)},
-                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
-        assert out["continue"] is True, text
-    # …and the tool being the outer source still fires.
-    for text in ("According to pytest the tests pass.", "CI reports the build is green."):
-        out = _run({"transcript_path": _transcript(tmp_path, text)},
-                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
-        assert out.get("decision") == "block", text
-
-
-def test_attribution_survives_a_tool_word_in_the_claim(tmp_path):
-    # Consequence of the rule above, pinned because it CHANGED: the tool word
-    # sits in the claim rather than in the source, so the sentence stays the
-    # contributor's. Previously the bare presence of "pipeline" anywhere in
-    # the clause flipped it to the assistant's own claim. This is the same
-    # principle as the test above, not a special case — but it is a recall
-    # loss against an unattributed reading, so it is spelled out rather than
-    # left to be discovered.
-    out = _run({"transcript_path": _transcript(tmp_path, "The contributor says the pipeline is complete.")},
-               {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
-    assert out["continue"] is True
-    # Known limitation, left deliberately: attribution does not survive a
-    # coordinator, so the second half reads as the assistant's own claim.
-    out = _run({"transcript_path": _transcript(
-                    tmp_path, "The contributor says the fix is complete and the migration is done.")},
-               {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
-    assert out.get("decision") == "block"
-
-
-def test_evidence_word_must_end_its_clause(tmp_path):
-    # "passes" with a direct object is transitive prose, not a result claim.
-    for text in (
-        "The pipeline passes messages downstream.",
-        "The check passes the token to the handler.",
-        "The build passes environment variables through.",
-    ):
-        out = _run({"transcript_path": _transcript(tmp_path, text)},
-                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
-        assert out["continue"] is True, text
-
-
-def test_quoted_claim_is_mentioned_not_made(tmp_path):
-    # Quoting a claim as an EXAMPLE of a claim must not trip the gate. No
-    # dedicated quote guard does this: the opening quote defeats the
-    # sentence-start anchor, the closing quote fails the evidence pattern's
-    # terminal lookahead, and EXEMPT_CONTEXT covers the quoted "is complete"
-    # form. Pinned because that is three mechanisms holding one property up
-    # by coincidence — if any of them moves, this is where it shows.
-    quoted = (
-        'The phrase "the tests pass" is the new pattern.',
-        'I added "the migration is complete" to the fixture.',
-        '"Task complete!" is what it printed.',
-        'The string "Done." appears in the log.',
-        '"Shipped the fix." is the example in the README.',
-    )
-    for text in quoted:
-        out = _run({"transcript_path": _transcript(tmp_path, text)},
-                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
-        assert out["continue"] is True, text
-    unquoted = 'He said "hello" to the user. The migration is complete.'
-    out = _run({"transcript_path": _transcript(tmp_path, unquoted)},
-               {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
-    assert out.get("decision") == "block", unquoted
-
-
-def test_live_only_counts_when_it_ends_the_clause(tmp_path):
-    # "live" is a closure verb only in "the change is live [now]". Attributive
-    # and compound uses are ordinary English.
-    for text in (
-        "This is live data.",
-        "This change is live-streaming to viewers.",
-        "The dashboard is live-updating every second.",
-        "This is live traffic from production.",
-    ):
-        out = _run({"transcript_path": _transcript(tmp_path, text)},
-                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
-        assert out["continue"] is True, text
-    for text in ("The change is live.", "The change is live now.", "the change is live"):
-        out = _run({"transcript_path": _transcript(tmp_path, text)},
-                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
-        assert out.get("decision") == "block", text
-
-
-def test_precision_fixes_did_not_cost_recall(tmp_path):
-    # The tightening above must not eat ordinary result claims: "pass" followed
-    # by an adverb or preposition is still a claim, so is a bare "is passing".
-    for text in (
-        "All tests pass on Python 3.12.",
-        "The tests pass cleanly now.",
-        "The build is passing.",
-        "The tests pass and I pushed the branch.",
-    ):
-        out = _run({"transcript_path": _transcript(tmp_path, text)},
-                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
-        assert out.get("decision") == "block", text
-
-
-@pytest.mark.xfail(strict=True, reason="known miss: 'confirmed' is too false-positive-prone to add blind")
-def test_known_miss_confirmed_with_curl(tmp_path):
-    # Documented gap, pinned so a fix is noticed (strict xfail turns green into
-    # a failure, which is the prompt to delete this marker).
-    out = _run({"transcript_path": _transcript(tmp_path,
-                                                "The endpoint now returns 200 and I confirmed it with curl.")},
-               {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
-    assert out.get("decision") == "block"
-
-
 def test_no_claim_passes(tmp_path):
     out = _run({"transcript_path": _transcript(tmp_path, "Here is a summary of the options.")},
                {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
@@ -612,3 +248,85 @@ def test_malformed_log_line_does_not_crash(tmp_path):
                {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": str(logp)})
     # Valid output (exit 0 is asserted in _run); bad line skipped → no fresh log → blocks.
     assert out.get("decision") == "block"
+
+
+# ---- additions from #3: what the narrowed patch adds, and nothing more ----
+# The patch is deliberately additive: every pattern below only ADDS a match,
+# none of them exempts anything the detector already caught. That property is
+# pinned corpus-wide in test_claim_corpus.py; these are the unit cases.
+
+def test_first_person_lead_in(tmp_path):
+    # Agents write "I've implemented the migration." far more often than
+    # "Implemented the migration."; without the optional lead-in the leading
+    # subject defeated the sentence-start anchor. The determiner requirement is
+    # untouched, which is what keeps the participle-opener cases above exempt.
+    for text in (
+        "I've implemented the retry logic in fetch_page.",
+        "I finished the migration and pushed to main.",
+        "We have fixed the tests.",
+        "I just resolved this ticket.",
+    ):
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out.get("decision") == "block", text
+    # …still requires the determiner, so these stay exempt.
+    for text in (
+        "We have verified users in the table.",
+        "I have finished reading the spec.",
+    ):
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out["continue"] is True, text
+
+
+def test_standalone_implemented_and_finished(tmp_path):
+    # "implemented" was in the action list but not the standalone one, so a bare
+    # "Implemented." was missed while "Implemented the migration." was caught.
+    for text in ("Implemented. Let me know if you want the tests too.", "Finished."):
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out.get("decision") == "block", text
+
+
+def test_subject_noun_closure(tmp_path):
+    # "Task complete!" / "Migration done." — a bare noun plus a closure verb,
+    # no copula. Anchored to sentence start and limited to CLOSURE_NOUNS so it
+    # cannot reach ordinary prose that happens to contain those words.
+    for text in ("Task complete!", "Migration done.", "The refactor complete."):
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out.get("decision") == "block", text
+    for text in ("Task completion is tracked in the ledger.", "Build artifacts go in dist/."):
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out["continue"] is True, text
+
+
+def test_in_place_and_wired_up(tmp_path):
+    for text in ("The fix is in place.", "Everything is now wired up."):
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out.get("decision") == "block", text
+    # Bare "wired" is deliberately NOT a closure verb.
+    out = _run({"transcript_path": _transcript(tmp_path, "The button is wired to the handler.")},
+               {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+    assert out["continue"] is True
+
+
+def test_live_only_counts_when_it_ends_its_clause(tmp_path):
+    # "live" earns its place only in "the change is live [now]". Attributive and
+    # compound uses are ordinary English, so the verb carries its own terminal
+    # guard rather than relying on any exemption elsewhere.
+    for text in ("The change is live.", "The change is live now.", "the change is live"):
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out.get("decision") == "block", text
+    for text in (
+        "This is live data.",
+        "This change is live-streaming to viewers.",
+        "The dashboard is live-updating every second.",
+        "Live migration is supported.",
+    ):
+        out = _run({"transcript_path": _transcript(tmp_path, text)},
+                   {"CLAIM_CHECK_ENFORCE_MODE": "block", "CLAIM_CHECKS_LOG_PATH": _log_path(tmp_path)})
+        assert out["continue"] is True, text
