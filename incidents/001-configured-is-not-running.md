@@ -96,13 +96,13 @@ A defect isn't closed when the symptom is repaired. It's closed when recurrence 
 
 **Step 2 — deny test:** Send a payload the pre-tool gate should block. Verify exit 2 and the expected deny reason in stderr.
 
-**Step 3 — allow control and integration check:** Send a payload the pre-tool gate should pass. Verify exit 0. For the pre-tool gate specifically: verify the protected operation did not execute on deny, and did execute on allow.
+**Step 3 — allow control:** Send a payload the pre-tool gate should pass. Verify exit 0 and that the hook's output carries no deny signals (`continue`, `permissionDecision`, `decision`). This tests that the hook signals correctly — not that the harness actually allowed the tool call. Whether the harness enforces the signal is outside the scope of a hook test; the harness reads the hook's output and decides. A hook that signals correctly is the prerequisite; harness behavior requires a full integration test.
 
 One design note: the highest-confidence liveness check reads the actual configured command from `settings.json` and exercises that command using the same invocation semantics as the harness — rather than constructing an independent assumption about how hooks are invoked. Otherwise the checker can recreate the same divergence: production config says A, health checker independently assumes B.
 
 Isolate each fixture from production inputs. Verify side effects independently.
 
-The liveness test at `.claude/scripts/tests/test_hook_liveness.py` implements these steps. It uses `[hook_path]` (direct command invocation), not `[sys.executable, hook_path]` (interpreter invocation). All four tests pass; three mutations confirmed they go RED on the conditions they exist to catch.
+The liveness test at `.claude/scripts/tests/test_hook_liveness.py` implements these steps against the pre-tool gate. It uses `[hook_path]` (direct command invocation), not `[sys.executable, hook_path]` (interpreter invocation). The PostToolUse and Stop hooks are not covered here — they have no deny logic and require different test shapes. All four tests pass; three mutations confirmed they go RED on the conditions they exist to catch.
 
 ---
 
@@ -114,4 +114,4 @@ The liveness test at `.claude/scripts/tests/test_hook_liveness.py` implements th
 - Prescribed check: `automation-health-monitor` SKILL.md, monitor design rule 9
 - Inspected test source: `.claude/scripts/tests/test_enforcement_hook.py`, interpreter invocation confirmed for this file
 - Andon starter kit invocation reference: `HOOK_INSTALL.md`, `python3` explicit throughout
-- Liveness test: `.claude/scripts/tests/test_hook_liveness.py`, direct command invocation, Steps 0–3; 4/4 tests pass, 3/3 mutations RED (2026-09-24)
+- Liveness test: `.claude/scripts/tests/test_hook_liveness.py`, direct command invocation, Steps 0–3 against the pre-tool gate; 4/4 tests pass, 3/3 mutations RED (2026-09-24); Step 3 verifies hook output signals, not harness enforcement
