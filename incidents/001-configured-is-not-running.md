@@ -62,11 +62,11 @@ What was not established: an automated test that would detect this class of fail
 
 ## Status
 
-*Closed 2026-09-24. The liveness test described in Steps 0–3 below was built and is now in place.*
+*Closed 2026-09-24: pre-tool direct-launch test gap.*
 
 The automation health monitor design rules prescribe a liveness check: invoke each configured hook as a direct command with a benign payload and alarm on a launch/permission failure; separately verify deny behavior; cross-check configuration against disk in both directions.
 
-That check has been prescribed and implemented. See Evidence for the test source. The inspected test helper for the pre-tool gate used interpreter invocation and would not have caught the incident; the new test file uses direct command invocation.
+Direct-command regression coverage is implemented for the pre-tool gate. Automated coverage of the other two hooks, configuration reconciliation, and harness enforcement remain outside this closure's scope. See Evidence for the test source. The inspected test helper for the pre-tool gate used interpreter invocation and would not have caught the incident; the new test file uses direct command invocation.
 
 A design rule in a document is the same category of thing as a gate with no execute bit: it expresses the intent without enforcing it.
 
