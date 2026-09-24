@@ -60,17 +60,15 @@ What was not established: an automated test that would detect this class of fail
 
 ---
 
-## The remaining gap
+## Status
 
-The automation health monitor design rules now prescribe a liveness check: invoke each configured hook as a direct command with a benign payload and alarm on nonzero exit; separately, verify deny behavior; cross-check configuration against disk in both directions.
+*Closed 2026-09-24. The liveness test described in Steps 0–3 below was built and is now in place.*
 
-That check has been prescribed. No recurring automated liveness test running these checks was established by this audit.
+The automation health monitor design rules prescribe a liveness check: invoke each configured hook as a direct command with a benign payload and alarm on a launch/permission failure; separately verify deny behavior; cross-check configuration against disk in both directions.
 
-If a chmod accident happens again — or a new hook gets added without the execute bit — the prescribed check would catch it only if someone runs it. The inspected test helper for the pre-tool gate uses interpreter invocation and would not catch it.
+That check has been prescribed and implemented. See Evidence for the test source. The inspected test helper for the pre-tool gate used interpreter invocation and would not have caught the incident; the new test file uses direct command invocation.
 
 A design rule in a document is the same category of thing as a gate with no execute bit: it expresses the intent without enforcing it.
-
-This incident is open. The automated test has not been built.
 
 ---
 
@@ -84,7 +82,7 @@ The assumption collapsed four distinct states into one. A file can exist and be 
 
 **Configured ≠ Launchable ≠ Exercised ≠ Enforcing.**
 
-The fix has two layers. The first layer — `chmod +x` and manual post-repair checks — is done. The second layer — an automated liveness test that would detect a future recurrence without a manual audit — remains open.
+The fix has two layers. The first layer — `chmod +x` and manual post-repair checks — is done. The second layer — an automated liveness test that exercises the direct command invocation path — is also done.
 
 A defect isn't closed when the symptom is repaired. It's closed when recurrence becomes detectable.
 
@@ -104,7 +102,7 @@ One design note: the highest-confidence liveness check reads the actual configur
 
 Isolate each fixture from production inputs. Verify side effects independently.
 
-No such test was identified during the audit that produced this report. Building it is the concrete remaining action.
+The liveness test at `.claude/scripts/tests/test_hook_liveness.py` implements these steps. It uses `[hook_path]` (direct command invocation), not `[sys.executable, hook_path]` (interpreter invocation). All four tests pass; three mutations confirmed they go RED on the conditions they exist to catch.
 
 ---
 
@@ -116,3 +114,4 @@ No such test was identified during the audit that produced this report. Building
 - Prescribed check: `automation-health-monitor` SKILL.md, monitor design rule 9
 - Inspected test source: `.claude/scripts/tests/test_enforcement_hook.py`, interpreter invocation confirmed for this file
 - Andon starter kit invocation reference: `HOOK_INSTALL.md`, `python3` explicit throughout
+- Liveness test: `.claude/scripts/tests/test_hook_liveness.py`, direct command invocation, Steps 0–3; 4/4 tests pass, 3/3 mutations RED (2026-09-24)
