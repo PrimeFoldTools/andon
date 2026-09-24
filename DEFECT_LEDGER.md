@@ -26,7 +26,7 @@ The four-line entries below are the raw material; these are the heuristics they 
 **Defect:** The agent said a change was "complete and tested." It had written the code but never run the tests. I trusted it, moved on, and the gap surfaced hours later.
 **Root cause:** "Done" is the single most expensive word an agent says, and nothing checked it. Polite reminders ("remember to verify") don't survive the moment.
 **Countermeasure:** A Stop hook (`claim_check_hook.py`) that reads the turn-ending message for done-claims and requires a verification log entry before the turn can end. Warn first, block once trusted.
-**Result:** When the detector recognizes a done-claim, the hook makes an unlogged verification gap visible instead of letting it pass silently. It catches forgetting-to-verify, not lying-about-it: the agent still writes its own evidence, and missed claim phrasings remain a known limit (see issue #3).
+**Result:** When the detector recognizes a done-claim, the hook makes an unlogged verification gap visible instead of letting it pass silently. It catches forgetting-to-verify, not lying-about-it: the agent still writes its own evidence, and a done-claim phrased outside the patterns still passes unseen (see the recall entry below).
 
 ### 2026-04 — "That doesn't exist" (it did)
 
@@ -97,6 +97,20 @@ The four-line entries below are the raw material; these are the heuristics they 
 **Root cause:** The search felt slower than the build, so it got skipped.
 **Countermeasure:** Search-before-building, every time: grep the code, check memory, look for an existing tool. A 30-second search beats three sessions of duplicate-bug cleanup.
 **Result:** Less duplication, fewer subtly-divergent twins.
+
+### 2026-09 — Tightened for precision, lost the recall — then overshot fixing it
+
+**Defect:** The claim detector caught 4 of 13 ordinary done-claims. `Implemented the migration.` fired; `I've implemented the migration.` — how agents actually write — did not. `Task complete!` and `The fix is in place.` passed unseen. Reported with a repro in issue #3.
+**Root cause:** Every false-positive fix had narrowed the patterns and nothing measured what the narrowing cost. Both sentence-start patterns were anchored so any leading subject defeated them.
+**Countermeasure:** Additions that stand on their own — a first-person lead-in (the determiner rule protecting `Fixed income securities…` untouched), the missing standalone verbs, a subject-noun closure form, and state verbs each carrying their own guard. Every accumulated example is a checked-in corpus, and the test that matters asserts the patch is *additive*: nothing the previous detector caught may stop being caught.
+**Result:** 11 of 13 on the reported set, 0 new false fires, 0 regressions. The two still missed are result-claims (`the tests pass`, `CI is green`), left deliberately — see the entry below, which is why.
+
+### 2026-09 — The fix that kept breaking what it was fixing
+
+**Defect:** Catching result-claims (`the tests pass`) needs the detector to know when a clause *asserts* something, so exemptions were added for negation, attribution and conditionals. Each round of review found claims those exemptions had silently suppressed: four, then two, then one. Each fix was correct and produced the next one.
+**Root cause:** Recall was being bought with exemptions, and an exemption is a blanket — it cannot see which claims it covers. Every new one widened the blast radius, so the defect rate per fix stayed roughly constant instead of falling. The reviews were catching instances; nobody was counting the class.
+**Countermeasure:** Drop the feature that needed the exemptions rather than keep tuning them, and replace instance-checking with a property: a corpus-wide test that the patch only ever adds detections. Mutation-checked — reintroduce a broad exemption and it fails.
+**Result:** Result-claims stay undetected, which is a real loss stated plainly rather than a target met. In exchange the regression class is gone by construction, not by vigilance. *An exemption that can suppress a claim you cannot enumerate is a liability priced as a feature.*
 
 ### 2026-06 — Reversed a right answer when pushed
 
